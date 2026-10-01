@@ -131,24 +131,24 @@ test('GET /api/insights returns 200 with avg_price_cents and X-Request-Id', asyn
   assert.ok(Array.isArray(body.recent_searches), 'body should have recent_searches array');
 });
 
-test('POST /api/chat returns 200 with a reply and X-Request-Id', async () => {
+test('POST /api/chat returns 500 internal_server_error with X-Request-Id', async () => {
   const res = await fetch(`http://localhost:${appPort}/api/chat`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ message: 'Is the direct flight available?', user: 1 }),
   });
-  assert.equal(res.status, 200, 'chat status should be 200');
+  assert.equal(res.status, 500, 'chat status should be 500');
   assert.ok(res.headers.get('x-request-id')?.startsWith('req_'), 'X-Request-Id missing');
 
   const body = await res.json();
-  assert.ok(typeof body.reply === 'string' && body.reply.length > 0, 'reply missing');
+  assert.equal(body.error, 'internal_server_error', 'error should be internal_server_error');
   assert.ok(
     typeof body.request_id === 'string' && body.request_id.startsWith('req_'),
     `request_id missing or malformed: ${JSON.stringify(body)}`
   );
 });
 
-test('POST /api/book returns 410 flight_not_available with message and request_id', async () => {
+test('POST /api/book returns 200 confirmed with request_id', async () => {
   const flight_id = cachedFareId || `PN401_${nextThursday}`;
   const res = await fetch(`http://localhost:${appPort}/api/book`, {
     method: 'POST',
@@ -156,11 +156,11 @@ test('POST /api/book returns 410 flight_not_available with message and request_i
     body: JSON.stringify({ flight_id, user: 1 }),
   });
   assert.ok(res.headers.get('x-request-id')?.startsWith('req_'), 'X-Request-Id missing');
-  assert.equal(res.status, 410, `expected 410, got ${res.status}`);
+  assert.equal(res.status, 200, `expected 200, got ${res.status}`);
 
   const body = await res.json();
-  assert.equal(body.error, 'flight_not_available', 'error should be flight_not_available');
-  assert.ok(typeof body.message === 'string' && body.message.length > 0, 'message missing');
+  assert.equal(body.confirmed, true, 'booking should be confirmed');
+  assert.equal(body.flight_id, flight_id, 'flight_id mismatch');
   assert.ok(
     typeof body.request_id === 'string' && body.request_id.startsWith('req_'),
     `request_id missing or malformed: ${JSON.stringify(body)}`

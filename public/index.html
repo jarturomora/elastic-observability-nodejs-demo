@@ -163,7 +163,12 @@
           <span>Contacting airline…</span>
         </div>
       </div>
-      <!-- Step 3: failure -->
+      <!-- Step 3a: success -->
+      <div id="modal-success" hidden>
+        <div class="modal-success-msg" id="modal-success-msg"></div>
+        <div class="modal-failure-id" id="modal-success-id"></div>
+      </div>
+      <!-- Step 3b: failure -->
       <div id="modal-failure" hidden>
         <div class="modal-failure-msg" id="modal-failure-msg">Please contact customer care to book this flight as it is not available anymore.</div>
         <div class="modal-failure-id" id="modal-failure-id"></div>
@@ -397,6 +402,7 @@
     document.getElementById('modal-price-check').hidden  = false;
     document.getElementById('modal-processing').hidden   = true;
     document.getElementById('modal-failure').hidden      = true;
+    document.getElementById('modal-success').hidden      = true;
     overlay.hidden = false;
   }
 
@@ -422,6 +428,14 @@
       });
       const body = await res.json().catch(() => ({}));
       document.getElementById('modal-processing').hidden = true;
+      if (res.ok && body.confirmed) {
+        document.getElementById('modal-success').hidden = false;
+        document.getElementById('modal-success-msg').textContent =
+          `Booking confirmed with ${body.partner}. Flight ${body.flight_id}.`;
+        document.getElementById('modal-success-id').textContent =
+          body.request_id ? `Request ID: ${body.request_id}` : '';
+        return;
+      }
       document.getElementById('modal-failure').hidden    = false;
       document.getElementById('modal-failure-msg').textContent =
         body.message || 'Please contact customer care to book this flight as it is not available anymore.';

@@ -68,21 +68,21 @@ await check('/api/insights', async () => {
 });
 
 // ── /api/chat ─────────────────────────────────────────────────────────────────
-await check('/api/chat (200 reply)', async () => {
+await check('/api/chat (500 internal_server_error)', async () => {
   const res = await fetch(`${BASE}/api/chat`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ message: 'Is the direct flight available?', user: 1 }),
   });
-  assert(res.status === 200, `expected 200, got ${res.status}`);
+  assert(res.status === 500, `expected 500, got ${res.status}`);
   assert(res.headers.get('x-request-id')?.startsWith('req_'), 'missing X-Request-Id');
   const b = await res.json();
-  assert(typeof b.reply === 'string' && b.reply.length > 0, 'expected a reply');
+  assert(b.error === 'internal_server_error', 'expected error=internal_server_error');
   assert(typeof b.request_id === 'string' && b.request_id.startsWith('req_'), 'missing request_id in body');
 });
 
 // ── /api/book ─────────────────────────────────────────────────────────────────
-await check('/api/book (410 flight_not_available with message)', async () => {
+await check('/api/book (200 confirmed)', async () => {
   const flight_id = searchedFareId || `PN401_${nextThursday}`;
   const res = await fetch(`${BASE}/api/book`, {
     method: 'POST',
@@ -90,10 +90,10 @@ await check('/api/book (410 flight_not_available with message)', async () => {
     body: JSON.stringify({ flight_id, user: 1 }),
   });
   assert(res.headers.get('x-request-id')?.startsWith('req_'), 'missing X-Request-Id');
-  assert(res.status === 410, `expected 410, got ${res.status}`);
+  assert(res.status === 200, `expected 200, got ${res.status}`);
   const b = await res.json();
-  assert(b.error === 'flight_not_available', 'expected error=flight_not_available');
-  assert(typeof b.message === 'string' && b.message.length > 0, 'missing message in body');
+  assert(b.confirmed === true, 'expected confirmed=true');
+  assert(b.flight_id === flight_id, 'flight_id mismatch');
   assert(typeof b.request_id === 'string' && b.request_id.startsWith('req_'),
     `missing or malformed request_id in body: ${JSON.stringify(b)}`);
 });

@@ -502,6 +502,10 @@ header {
   font-size: .68rem; color: var(--muted);
   display: block; margin-top: .35rem;
 }
+.modal-success-msg {
+  color: var(--green, #1a7f37); font-weight: 700; text-align: center;
+  margin-bottom: .5rem; font-size: .9rem;
+}
 .modal-failure-msg {
   color: var(--red); font-weight: 700; text-align: center;
   margin-bottom: .5rem; font-size: .9rem;

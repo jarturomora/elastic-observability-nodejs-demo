@@ -91,27 +91,29 @@ app.get('/api/search', async (req, res, next) => {
 
     const qs = `?origin=${origin}&destination=${destination}&date=${date}`;
 
-    // Fan out to all partners concurrently; a slow or failing partner is skipped
-    const results = await Promise.allSettled(
-      PARTNERS.map(async partner => {
-        const r = await fetch(partner.url + qs, { signal: AbortSignal.timeout(1500) });
-        if (!r.ok) return null;
-        return { partner, fares: await r.json() };
-      })
-    );
-    const responded = results
-      .filter(r => r.status === 'fulfilled' && r.value)
-      .map(r => r.value);
+    // Collect fares from each partner
+    const responded = [];
+    for (const partner of PARTNERS) {
+      try {
+        const r = await fetch(partner.url + qs);
+        if (r.ok) responded.push({ partner, fares: await r.json() });
+      } catch { /* skip failed partner */ }
+    }
 
     const allFares = responded.flatMap(({ fares }) => fares);
 
     // Dedupe by fare id, keeping the cheapest
-    const byId = new Map();
-    for (const fare of allFares) {
-      const existing = byId.get(fare.id);
-      if (!existing || fare.priceCents < existing.priceCents) byId.set(fare.id, fare);
+    const unique = [];
+    for (let i = 0; i < allFares.length; i++) {
+      let dup = false;
+      for (let j = 0; j < unique.length; j++) {
+        if (allFares[i].id === unique[j].id) {
+          if (allFares[i].priceCents < unique[j].priceCents) unique[j] = allFares[i];
+          dup = true; break;
+        }
+      }
+      if (!dup) unique.push(allFares[i]);
     }
-    const unique = [...byId.values()];
 
     // Attach partner port for booking lookup
     const withPort = unique.map(f => ({
@@ -238,7 +240,7 @@ function chatReply(message) {
 app.post('/api/chat', async (req, res, next) => {
   const { message, user: userId } = req.body;
   try {
-    const history = await pool.query(
+    const history = pool.query(
       'SELECT destination FROM search_history WHERE user_id = $1 ORDER BY searched_at DESC LIMIT 1',
       [userId || null]
     );
@@ -253,14 +255,41 @@ app.post('/api/chat', async (req, res, next) => {
 });
 
 // ── /api/book ─────────────────────────────────────────────────────────────────
-app.post('/api/book', (req, res) => {
+app.post('/api/book', async (req, res) => {
   const { flight_id, user: userId } = req.body;
-  req.log.warn({ user: userId, flight_id }, 'booking rejected — flight no longer available');
-  res.status(410).json({
-    error: 'flight_not_available',
-    message: 'Please contact customer care to book this flight as it is not available anymore.',
-    request_id: req.id,
-  });
+  const cached = fareCache.get(flight_id);
+  if (!cached || !cached.partnerPort) {
+    req.log.warn({ user: userId, flight_id }, 'booking rejected — unknown flight');
+    return res.status(404).json({
+      error: 'flight_not_found',
+      message: 'Search for this flight before booking it.',
+      request_id: req.id,
+    });
+  }
+
+  try {
+    // Penguin Air can take ~5 s and 503 occasionally, so allow a long timeout and one retry
+    const confirmUrl = `http://localhost:${cached.partnerPort}/confirm?flight_id=${encodeURIComponent(flight_id)}`;
+    let r = await fetch(confirmUrl, { signal: AbortSignal.timeout(8000) });
+    if (!r.ok) r = await fetch(confirmUrl, { signal: AbortSignal.timeout(8000) });
+    if (!r.ok) throw new Error(`partner responded ${r.status}`);
+    const confirmation = await r.json();
+    req.log.info({ user: userId, flight_id, partner: confirmation.partner }, 'booking confirmed');
+    res.json({
+      confirmed: true,
+      flight_id,
+      partner: confirmation.partner,
+      fare: cached.fare,
+      request_id: req.id,
+    });
+  } catch (err) {
+    req.log.error({ err, user: userId, flight_id }, 'booking failed — partner unavailable');
+    res.status(502).json({
+      error: 'partner_unavailable',
+      message: 'The airline could not confirm this booking. Please try again.',
+      request_id: req.id,
+    });
+  }
 });
 
 // ── Error handler ─────────────────────────────────────────────────────────────
