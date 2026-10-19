@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>✈️</text></svg>">
+<meta charset="utf-8">
+<title>Skyward — BEFORE / AFTER</title>
+<style>
+  html,body{margin:0;height:100%;background:#111;font-family:system-ui,sans-serif;color:#fff}
+  .panes{display:flex;height:100%}
+  iframe{flex:1;border:0;width:50%;background:#fff}
+  iframe + iframe{border-left:3px solid #111}
+</style>
+</head>
+<body>
+<div class="panes">
+  <iframe id="before" src="http://localhost:3000/"></iframe>
+  <iframe id="after"  src="http://localhost:3001/"></iframe>
+</div>
+<script>
+  function fire() {
+    for (const id of ['before', 'after'])
+      document.getElementById(id).contentWindow.postMessage({ type: 'skyward-search' }, '*');
+  }
+  document.addEventListener('keydown', (e) => {
+    if (e.code === 'Space') { e.preventDefault(); fire(); }
+  });
+  // Panes forward Space here when they have focus
+  window.addEventListener('message', (e) => { if (e.data && e.data.type === 'skyward-fire') fire(); });
+</script>
+</body>
+</html>

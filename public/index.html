@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>✈️</text></svg>">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Skyward for Business — Northwind Consulting</title>
@@ -64,7 +65,7 @@
           </select>
         </div>
         <div class="btn-wrap">
-          <label style="visibility:hidden;font-size:.7rem">&nbsp;</label>
+          <label style="visibility:hidden;font-size:0.88rem">&nbsp;</label>
           <button type="submit" id="search-btn">Search flights</button>
         </div>
       </form>
@@ -108,38 +109,6 @@
     </div>
 
   </div><!-- /.main-col -->
-
-  <!-- ── Sidebar ──────────────────────────────────────────────── -->
-  <aside class="sidebar-col">
-    <div class="sidebar-card" id="insights-card">
-      <div class="sidebar-card-header">
-        <span class="sidebar-card-title">Route insights</span>
-        <span class="insights-meta">
-          <span class="insights-route-label" id="insights-route">LHR → SFO</span>
-          <span class="insights-ms" id="insights-ms">—</span>
-        </span>
-      </div>
-      <div class="insights-loading" id="insights-loading">
-        <div class="mini-spinner"></div><span>Loading…</span>
-      </div>
-      <div id="insights-content" hidden>
-        <div class="insights-row">
-          <span class="insights-label">Avg price this month</span>
-          <span class="insights-val" id="insights-price">—</span>
-        </div>
-        <div class="insights-row">
-          <span class="insights-label">vs last month</span>
-          <span class="insights-val" id="insights-trend">—</span>
-        </div>
-        <div class="insights-row" id="insights-low-row" hidden>
-          <span class="insights-label">Lowest today</span>
-          <span class="insights-val" id="insights-low">—</span>
-        </div>
-        <div id="insights-history"></div>
-      </div>
-      <div class="insights-err" id="insights-error" hidden>Could not load insights</div>
-    </div>
-  </aside>
 
 </div><!-- /.page-layout -->
 
@@ -386,6 +355,28 @@
     }
   });
 
+  // ── Keyboard shortcut ──────────────────────────────────
+  // S or Ctrl/Cmd+Enter runs the search; compare.html can also trigger it via postMessage.
+  function triggerSearch() {
+    if (!searchBtn.disabled) form.requestSubmit();
+  }
+  document.addEventListener('keydown', (e) => {
+    // Inside compare.html: forward Space to the parent so it fires both panes
+    if (window.parent !== window && e.code === 'Space' &&
+        !/^(INPUT|SELECT|TEXTAREA)$/.test(document.activeElement.tagName)) {
+      e.preventDefault(); window.parent.postMessage({ type: 'skyward-fire' }, '*'); return;
+    }
+    const typing = /^(INPUT|SELECT|TEXTAREA)$/.test(document.activeElement.tagName);
+    if ((e.key === 's' || e.key === 'S') && !typing && !e.metaKey && !e.ctrlKey && !e.altKey) {
+      e.preventDefault(); triggerSearch();
+    } else if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+      e.preventDefault(); triggerSearch();
+    }
+  });
+  window.addEventListener('message', (e) => {
+    if (e.data && e.data.type === 'skyward-search') triggerSearch();
+  });
+
   // ── Book modal ──────────────────────────────────────────────────────────────
   const overlay    = document.getElementById('modal-overlay');
   const modalClose = document.getElementById('modal-close');
@@ -397,7 +388,7 @@
     document.getElementById('modal-flight-info').innerHTML =
       `<strong>${esc(flight.flightNumber)}</strong> &nbsp;${esc(flight.depart)} → ${esc(flight.arrive)} &nbsp;` +
       `${fmtDur(flight.durationMins)} &nbsp;${esc(flight.airline)}` +
-      `<br><span style="font-size:.82rem;color:var(--muted)">Price: ${fmtPrice(flight.priceCents)} per person</span>`;
+      `<br><span style="font-size:1.02rem;color:var(--muted)">Price: ${fmtPrice(flight.priceCents)} per person</span>`;
 
     document.getElementById('modal-price-check').hidden  = false;
     document.getElementById('modal-processing').hidden   = true;
@@ -449,74 +440,6 @@
       document.getElementById('modal-failure-id').textContent = '';
     }
   });
-
-  // ── Insights sidebar ────────────────────────────────────────────────────────
-  let insightsMsInterval = null;
-
-  function fetchInsights() {
-    const origin = document.getElementById('origin').value.trim().toUpperCase() || 'LHR';
-    const dest   = document.getElementById('destination').value.trim().toUpperCase() || 'SFO';
-    document.getElementById('insights-route').textContent = `${origin} → ${dest}`;
-
-    const msEl      = document.getElementById('insights-ms');
-    const loadingEl = document.getElementById('insights-loading');
-    const contentEl = document.getElementById('insights-content');
-    const errorEl   = document.getElementById('insights-error');
-
-    loadingEl.hidden = false; contentEl.hidden = true; errorEl.hidden = true;
-    const t0 = Date.now();
-    clearInterval(insightsMsInterval);
-    insightsMsInterval = setInterval(() => { msEl.textContent = `${Date.now() - t0}ms`; }, 50);
-
-    fetch(`/api/insights?origin=${encodeURIComponent(origin)}&destination=${encodeURIComponent(dest)}&user=${userId}`)
-      .then(r => r.json())
-      .then(data => {
-        clearInterval(insightsMsInterval);
-        msEl.textContent = `${Date.now() - t0}ms`;
-
-        document.getElementById('insights-price').textContent =
-          data.avg_price_cents ? fmtPrice(data.avg_price_cents) : '—';
-
-        const trendEl = document.getElementById('insights-trend');
-        if (data.pct_change !== null && data.pct_change !== undefined) {
-          const dir = data.pct_change > 0 ? '▲' : '▼';
-          const cls = data.pct_change > 0 ? 'trend-up' : 'trend-dn';
-          trendEl.innerHTML = `<span class="${cls}">${dir}${Math.abs(data.pct_change)}%</span>`;
-        } else {
-          trendEl.textContent = '—';
-        }
-
-        const lowRow = document.getElementById('insights-low-row');
-        if (data.lowest_price_today) {
-          document.getElementById('insights-low').textContent = fmtPrice(data.lowest_price_today);
-          lowRow.hidden = false;
-        } else {
-          lowRow.hidden = true;
-        }
-
-        const histEl = document.getElementById('insights-history');
-        if (data.recent_searches && data.recent_searches.length) {
-          histEl.innerHTML = `<div class="insights-hist-label">Your recent searches</div>` +
-            data.recent_searches.map(s =>
-              `<div class="insights-hist-item">${esc(s.origin)} → ${esc(s.destination)} · ${esc(s.date)}` +
-              (s.purpose ? ` <span class="hist-purpose">${esc(s.purpose.replace('_', ' '))}</span>` : '') +
-              `</div>`
-            ).join('');
-        } else {
-          histEl.innerHTML = '';
-        }
-
-        loadingEl.hidden = true; contentEl.hidden = false; errorEl.hidden = true;
-      })
-      .catch(() => {
-        clearInterval(insightsMsInterval);
-        msEl.textContent = `${Date.now() - t0}ms`;
-        loadingEl.hidden = true; contentEl.hidden = true; errorEl.hidden = false;
-      });
-  }
-
-  fetchInsights();
-  setInterval(fetchInsights, 5000);
 
   // ── Chat ────────────────────────────────────────────────────────────────────
   const chatBubble  = document.getElementById('chat-bubble');
@@ -583,11 +506,11 @@
         addChatMsg(body.reply, 'bot');
       } else {
         // Dots stay. Log a traceable reference; dev can match rid in Elastic.
-        console.error('[chat:ERR_' + res.status + '] handler threw - rid=' + (body.request_id || 'n/a'), body);
+        console.debug('[chat:ERR_' + res.status + '] handler threw - rid=' + (body.request_id || 'n/a'), body);
         addChatMsg('Error: unexpected server response.', 'bot', 'error');
       }
     } catch (err) {
-      console.error('[chat:ERR_NETWORK] fetch failed', err.message);
+      console.debug('[chat:ERR_NETWORK] fetch failed', err.message);
       addChatMsg('Could not reach Travel Desk - check your connection.', 'bot', 'error');
     }
   }

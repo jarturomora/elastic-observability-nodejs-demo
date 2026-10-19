@@ -8,6 +8,7 @@
   },
   "scripts": {
     "dev": "bash scripts/dev.sh",
+    "dev:compare": "bash scripts/compare.sh",
     "stop:all": "bash scripts/stop.sh",
     "verify": "node --env-file=.env scripts/verify.js",
     "test": "node --env-file=.env --test test/smoke.test.js",

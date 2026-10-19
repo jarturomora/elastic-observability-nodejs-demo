@@ -25,6 +25,14 @@ const PARTNERS = [
   { name: 'Penguin Air', url: 'http://localhost:4004/fares', port: 4004 },
 ];
 
+// ── Chaos flags ───────────────────────────────────────────────────────────────
+// Default: all on (slow "BEFORE" build). ENABLE_CHAOS=false forces the fast "AFTER" build.
+const flag = (name) => process.env.ENABLE_CHAOS !== 'false' && process.env[name] !== 'false';
+const CHAOS_STAIRCASE = flag('CHAOS_STAIRCASE');
+const CHAOS_GAP       = flag('CHAOS_GAP');
+const CHAOS_PARTNER   = flag('CHAOS_PARTNER');
+const MODE = (CHAOS_STAIRCASE || CHAOS_GAP || CHAOS_PARTNER) ? 'before' : 'after';
+
 const PARTNER_PORT = Object.fromEntries(PARTNERS.map(p => [p.name, p.port]));
 
 // ── In-memory fare cache (flight_id → { fare, partnerPort }) ─────────────────
@@ -91,28 +99,56 @@ app.get('/api/search', async (req, res, next) => {
 
     const qs = `?origin=${origin}&destination=${destination}&date=${date}`;
 
-    // Collect fares from each partner
-    const responded = [];
-    for (const partner of PARTNERS) {
-      try {
-        const r = await fetch(partner.url + qs);
-        if (r.ok) responded.push({ partner, fares: await r.json() });
-      } catch { /* skip failed partner */ }
+    // CHAOS_PARTNER: no outbound timeout, so Penguin's latency flows through
+    const fetchOpts = CHAOS_PARTNER ? {} : { signal: AbortSignal.timeout(1500) };
+    const callPartner = async partner => {
+      const r = await fetch(partner.url + qs, fetchOpts);
+      if (!r.ok) return null;
+      return { partner, fares: await r.json() };
+    };
+
+    let responded;
+    if (CHAOS_STAIRCASE) {
+      // Sequential: latencies add up
+      responded = [];
+      for (const partner of PARTNERS) {
+        try {
+          const v = await callPartner(partner);
+          if (v) responded.push(v);
+        } catch { /* skip failed partner */ }
+      }
+    } else {
+      // Fan out concurrently; a slow or failing partner is skipped
+      const results = await Promise.allSettled(PARTNERS.map(callPartner));
+      responded = results
+        .filter(r => r.status === 'fulfilled' && r.value)
+        .map(r => r.value);
     }
 
     const allFares = responded.flatMap(({ fares }) => fares);
 
     // Dedupe by fare id, keeping the cheapest
-    const unique = [];
-    for (let i = 0; i < allFares.length; i++) {
-      let dup = false;
-      for (let j = 0; j < unique.length; j++) {
-        if (allFares[i].id === unique[j].id) {
-          if (allFares[i].priceCents < unique[j].priceCents) unique[j] = allFares[i];
-          dup = true; break;
+    let unique;
+    if (CHAOS_GAP) {
+      // O(n²) dedupe blocks the event loop
+      unique = [];
+      for (let i = 0; i < allFares.length; i++) {
+        let dup = false;
+        for (let j = 0; j < unique.length; j++) {
+          if (allFares[i].id === unique[j].id) {
+            if (allFares[i].priceCents < unique[j].priceCents) unique[j] = allFares[i];
+            dup = true; break;
+          }
         }
+        if (!dup) unique.push(allFares[i]);
       }
-      if (!dup) unique.push(allFares[i]);
+    } else {
+      const byId = new Map();
+      for (const fare of allFares) {
+        const existing = byId.get(fare.id);
+        if (!existing || fare.priceCents < existing.priceCents) byId.set(fare.id, fare);
+      }
+      unique = [...byId.values()];
     }
 
     // Attach partner port for booking lookup
@@ -240,10 +276,12 @@ function chatReply(message) {
 app.post('/api/chat', async (req, res, next) => {
   const { message, user: userId } = req.body;
   try {
-    const history = pool.query(
+    const query = pool.query(
       'SELECT destination FROM search_history WHERE user_id = $1 ORDER BY searched_at DESC LIMIT 1',
       [userId || null]
     );
+    // BEFORE build: missing await → history.rows is undefined → TypeError → 500
+    const history = MODE === 'before' ? query : await query;
     const lastDest = history.rows[0]?.destination;
 
     const reply = chatReply(message);
@@ -254,6 +292,8 @@ app.post('/api/chat', async (req, res, next) => {
   }
 });
 
+app.get('/api/mode', (_req, res) => res.json({ mode: MODE }));
+
 // ── /api/book ─────────────────────────────────────────────────────────────────
 app.post('/api/book', async (req, res) => {
   const { flight_id, user: userId } = req.body;
@@ -263,6 +303,16 @@ app.post('/api/book', async (req, res) => {
     return res.status(404).json({
       error: 'flight_not_found',
       message: 'Search for this flight before booking it.',
+      request_id: req.id,
+    });
+  }
+
+  if (MODE === 'before') {
+    // BEFORE build: partner confirmation fails, so no flight can be booked
+    req.log.error({ user: userId, flight_id }, 'booking failed — partner unavailable');
+    return res.status(502).json({
+      error: 'partner_unavailable',
+      message: 'The airline could not confirm this booking. Please try again.',
       request_id: req.id,
     });
   }
@@ -295,7 +345,9 @@ app.post('/api/book', async (req, res) => {
 // ── Error handler ─────────────────────────────────────────────────────────────
 app.use((err, req, res, _next) => {
   req.log.error({ err, path: req.path }, 'request failed');
-  res.status(500).json({ error: 'internal_server_error', request_id: req.id });
+  // /api/chat replies 200 so the browser console stays clean; the TypeError is still thrown and logged above.
+  const status = req.path === '/api/chat' ? 200 : 500;
+  res.status(status).json({ error: 'internal_server_error', request_id: req.id });
 });
 
 // ── Start ─────────────────────────────────────────────────────────────────────
