@@ -17,6 +17,8 @@ That command (what `npm start` runs) starts only the app. To start everything (P
 
 > **This is a learning demo.** The slow code is on purpose. Don't copy it into a real service.
 >
+> **Want the bug-free version?** Check out the [`fixed`](../../tree/fixed) branch: same app, none of the four bugs.
+>
 > **Using an AI coding tool?** Point it at [AGENTS.md](AGENTS.md).
 
 ## Architecture
@@ -75,7 +77,13 @@ Then point it at your Elastic project:
 
 Change one `CHAOS_*` flag in `.env`, run `npm run dev`, search again, and compare in Kibana.
 
-To compare side by side:
+To compare side by side, start everything with the buggy app on :3000 and the fixed app on :3001, then open http://localhost:3000/compare.html:
+
+```bash
+npm run dev:compare        # partners + buggy app :3000 + fixed app :3001
+```
+
+Or run the pieces yourself:
 
 ```bash
 npm run start:fast         # fixed app on :3001
@@ -88,6 +96,7 @@ npm run load:fast          # load test :3001 (fixed)
 | Command | What it does |
 |---|---|
 | `npm run dev` | Start everything (Postgres, partners, app) |
+| `npm run dev:compare` | Start everything plus the fixed app on :3001 (side-by-side at `/compare.html`) |
 | `npm run verify` | Check all endpoints |
 | `npm run stop:all` | Stop everything |
 | `npm test` | Run smoke tests |
