@@ -70,18 +70,19 @@ await check('/api/insights', async () => {
 const { mode } = await fetch(`${BASE}/api/mode`).then(r => r.json()).catch(() => ({ mode: 'before' }));
 
 // ── /api/chat ─────────────────────────────────────────────────────────────────
-await check(`/api/chat (${mode === 'before' ? '200 internal_server_error body' : '200 reply'})`, async () => {
+await check(`/api/chat (${mode === 'before' ? '200 degraded fallback' : '200 reply'})`, async () => {
   const res = await fetch(`${BASE}/api/chat`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ message: 'Is the direct flight available?', user: 1 }),
   });
-  if (mode !== 'before') { assert(res.status === 200, `expected 200, got ${res.status}`); return; }
   assert(res.status === 200, `expected 200, got ${res.status}`);
   assert(res.headers.get('x-request-id')?.startsWith('req_'), 'missing X-Request-Id');
   const b = await res.json();
-  assert(b.error === 'internal_server_error', 'expected error=internal_server_error');
+  assert(typeof b.reply === 'string', 'missing reply');
   assert(typeof b.request_id === 'string' && b.request_id.startsWith('req_'), 'missing request_id in body');
+  if (mode === 'before') assert(b.degraded === true, 'expected degraded=true fallback');
+  else assert(!b.degraded, 'unexpected degraded fallback');
 });
 
 // ── /api/book ─────────────────────────────────────────────────────────────────

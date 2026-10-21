@@ -10,6 +10,15 @@ services:
       timeout: 5s
       retries: 10
 
+  seed:
+    build: .
+    command: node src/seed.js
+    environment:
+      DATABASE_URL: postgres://postgres:postgres@db:5432/skyward
+    depends_on:
+      db:
+        condition: service_healthy
+
   partners:
     build: .
     command: node src/partners.js
@@ -25,11 +34,14 @@ services:
     env_file: [.env]
     environment:
       DATABASE_URL: postgres://postgres:postgres@db:5432/skyward
+      PARTNER_HOST: partners
     depends_on:
       db:
         condition: service_healthy
       partners:
         condition: service_started
+      seed:
+        condition: service_completed_successfully
 
   app-fixed:
     build: .
@@ -38,6 +50,7 @@ services:
     env_file: [.env]
     environment:
       DATABASE_URL: postgres://postgres:postgres@db:5432/skyward
+      PARTNER_HOST: partners
       ENABLE_CHAOS: "false"
       OTEL_SERVICE_NAME: skyward-search-fixed
     depends_on:
@@ -45,3 +58,5 @@ services:
         condition: service_healthy
       partners:
         condition: service_started
+      seed:
+        condition: service_completed_successfully

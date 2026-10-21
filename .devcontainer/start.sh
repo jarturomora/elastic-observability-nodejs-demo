@@ -29,14 +29,20 @@ pkill -f src/app.js     2>/dev/null || true
 sleep 1
 
 # Start mock partners (SkyJet :4001, AeroLuz :4002, Nimbus :4003, Zephyr :4004).
-# Reads latency/chaos vars from .env; DATABASE_URL from the container environment takes precedence.
+# Reads latency vars from .env; DATABASE_URL from the container environment takes precedence.
 nohup node --env-file=.env src/partners.js > /tmp/partners.log 2>&1 &
 echo "🤝 Mock partners starting (logs: /tmp/partners.log)"
 
-# Start the app without EDOT — works without an Elastic Cloud project.
-# To connect Elastic, edit .env and run: npm run restart:elastic
-nohup npm run start:plain > /tmp/app.log 2>&1 &
-echo "✈  Skyward starting on :3000 (logs: /tmp/app.log)"
+# Start the app. With Elastic secrets set (OTEL_* from remoteEnv) use `npm start`
+# (EDOT via --import); otherwise run without instrumentation.
+if [ -n "${OTEL_EXPORTER_OTLP_ENDPOINT:-}" ]; then
+  export OTEL_SERVICE_NAME="${OTEL_SERVICE_NAME:-skyward-travel-app}"
+  nohup npm start > /tmp/app.log 2>&1 &
+  echo "✈  Skyward starting on :3000 with Elastic (logs: /tmp/app.log)"
+else
+  nohup npm run start:plain > /tmp/app.log 2>&1 &
+  echo "✈  Skyward starting on :3000 without Elastic (logs: /tmp/app.log)"
+fi
 
 echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
@@ -44,9 +50,9 @@ echo " Skyward is running on port 3000 — no Elastic connected yet."
 echo " A browser tab should open automatically."
 echo " Search JFK → LHR and watch the timer."
 echo ""
-echo " To connect to Elastic Cloud:"
-echo "   1. Edit .env: set OTEL_EXPORTER_OTLP_ENDPOINT and"
-echo "                     OTEL_EXPORTER_OTLP_HEADERS"
+echo " To connect to Elastic Cloud, in a terminal:"
+echo "   1. export OTEL_EXPORTER_OTLP_ENDPOINT=... OTEL_EXPORTER_OTLP_HEADERS=..."
+echo "      export OTEL_SERVICE_NAME=skyward-travel-app"
 echo "   2. Run: npm run restart:elastic"
 echo ""
 echo " See README → 'Try it in GitHub Codespaces' for full instructions."

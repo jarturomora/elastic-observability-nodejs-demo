@@ -3,7 +3,8 @@
 import http from 'node:http';
 
 const FARES_PER_PARTNER = parseInt(process.env.FARES_PER_PARTNER || '3000');
-const BASE_LATENCY_MS   = parseInt(process.env.PARTNER_LATENCY_MS || '80');
+const BASE_LATENCY_MS   = parseInt(process.env.PARTNER_LATENCY_MS || '1300');
+const DEGRADED          = process.env.PENGUIN_DEGRADED === 'true';
 const FAIL_RATE         = parseFloat(process.env.PARTNER_FAIL_RATE || '0.03');
 
 const PARTNERS = {
@@ -102,9 +103,8 @@ function createPartnerServer(port) {
   const isPenguin = port === 4004;
 
   async function applyLatency() {
-    if (isPenguin) {
-      // Penguin Air is degraded: fixed 5.2 s delay + 15% 503.
-      // Sequential calls (CHAOS_STAIRCASE) accumulate all four latencies, pushing total > 5 s.
+    if (isPenguin && DEGRADED) {
+      // Opt-in (PENGUIN_DEGRADED=true): Penguin Air adds 5.2 s + 15% 503. Drives the CHAOS_PARTNER/booking bug.
       if (Math.random() < 0.15) return 503;
       await new Promise(r => setTimeout(r, 5200));
     } else {

@@ -8,6 +8,14 @@ import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
+// App and partner settings live in .env. OTEL_* variables must be exported in the shell before
+// start: the EDOT SDK reads them at --import time, before this file runs.
+try {
+  process.loadEnvFile('.env');
+} catch (err) {
+  if (err.code !== 'ENOENT') throw err;
+}
+
 const { Pool } = pg;
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -18,11 +26,12 @@ const pool = new Pool({
 });
 
 
+const PARTNER_HOST = process.env.PARTNER_HOST || 'localhost';
 const PARTNERS = [
-  { name: 'PuffinAir',   url: 'http://localhost:4001/fares', port: 4001 },
-  { name: 'GooseJet',    url: 'http://localhost:4002/fares', port: 4002 },
-  { name: 'Pelican Air', url: 'http://localhost:4003/fares', port: 4003 },
-  { name: 'Penguin Air', url: 'http://localhost:4004/fares', port: 4004 },
+  { name: 'PuffinAir',   url: `http://${PARTNER_HOST}:4001/fares`, port: 4001 },
+  { name: 'GooseJet',    url: `http://${PARTNER_HOST}:4002/fares`, port: 4002 },
+  { name: 'Pelican Air', url: `http://${PARTNER_HOST}:4003/fares`, port: 4003 },
+  { name: 'Penguin Air', url: `http://${PARTNER_HOST}:4004/fares`, port: 4004 },
 ];
 
 // ── Chaos flags ───────────────────────────────────────────────────────────────
@@ -97,7 +106,7 @@ app.get('/api/search', async (req, res, next) => {
       );
     }
 
-    const qs = `?origin=${origin}&destination=${destination}&date=${date}`;
+    const qs = `?origin=${encodeURIComponent(origin)}&destination=${encodeURIComponent(destination)}&date=${encodeURIComponent(date)}`;
 
     // CHAOS_PARTNER: no outbound timeout, so Penguin's latency flows through
     const fetchOpts = CHAOS_PARTNER ? {} : { signal: AbortSignal.timeout(1500) };
@@ -273,14 +282,16 @@ function chatReply(message) {
   return CHAT_REPLIES.default;
 }
 
-app.post('/api/chat', async (req, res, next) => {
+app.post('/api/chat', async (req, res) => {
   const { message, user: userId } = req.body;
   try {
     const query = pool.query(
       'SELECT destination FROM search_history WHERE user_id = $1 ORDER BY searched_at DESC LIMIT 1',
       [userId || null]
     );
-    // BEFORE build: missing await → history.rows is undefined → TypeError → 500
+    // BEFORE build: missing await → history is a Promise, so history.rows is undefined and
+    // history.rows[0] throws a TypeError. Real-world pattern: the catch below swallows it, the
+    // user gets a friendly fallback with a 200, and the error is only visible in server logs.
     const history = MODE === 'before' ? query : await query;
     const lastDest = history.rows[0]?.destination;
 
@@ -288,7 +299,12 @@ app.post('/api/chat', async (req, res, next) => {
     req.log.info({ user: userId, lastDest }, 'chat reply sent');
     res.json({ reply, request_id: req.id });
   } catch (err) {
-    next(err);
+    req.log.error({ err }, 'chat history lookup failed');
+    res.json({
+      reply: "Sorry, I couldn't load your recent searches. How can I help?",
+      degraded: true,
+      request_id: req.id,
+    });
   }
 });
 
@@ -319,7 +335,7 @@ app.post('/api/book', async (req, res) => {
 
   try {
     // Penguin Air can take ~5 s and 503 occasionally, so allow a long timeout and one retry
-    const confirmUrl = `http://localhost:${cached.partnerPort}/confirm?flight_id=${encodeURIComponent(flight_id)}`;
+    const confirmUrl = `http://${PARTNER_HOST}:${cached.partnerPort}/confirm?flight_id=${encodeURIComponent(flight_id)}`;
     let r = await fetch(confirmUrl, { signal: AbortSignal.timeout(8000) });
     if (!r.ok) r = await fetch(confirmUrl, { signal: AbortSignal.timeout(8000) });
     if (!r.ok) throw new Error(`partner responded ${r.status}`);
@@ -345,9 +361,7 @@ app.post('/api/book', async (req, res) => {
 // ── Error handler ─────────────────────────────────────────────────────────────
 app.use((err, req, res, _next) => {
   req.log.error({ err, path: req.path }, 'request failed');
-  // /api/chat replies 200 so the browser console stays clean; the TypeError is still thrown and logged above.
-  const status = req.path === '/api/chat' ? 200 : 500;
-  res.status(status).json({ error: 'internal_server_error', request_id: req.id });
+  res.status(500).json({ error: 'internal_server_error', request_id: req.id });
 });
 
 // ── Start ─────────────────────────────────────────────────────────────────────

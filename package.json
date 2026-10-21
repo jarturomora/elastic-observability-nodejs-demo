@@ -4,19 +4,20 @@
   "description": "Skyward flight aggregator — demos Elastic Observability with EDOT Node.js",
   "type": "module",
   "engines": {
-    "node": ">=20.6"
+    "node": ">=20.12"
   },
   "scripts": {
+    "services": "bash scripts/services.sh",
     "dev": "bash scripts/dev.sh",
     "dev:compare": "bash scripts/compare.sh",
     "stop:all": "bash scripts/stop.sh",
     "verify": "node --env-file=.env scripts/verify.js",
     "test": "node --env-file=.env --test test/smoke.test.js",
     "seed": "node --env-file=.env src/seed.js",
-    "start": "node --env-file=.env --import @elastic/opentelemetry-node src/app.js",
-    "start:plain": "node --env-file=.env src/app.js",
+    "start": "node --import @elastic/opentelemetry-node src/app.js",
+    "start:plain": "node src/app.js",
     "start:partners": "node --env-file=.env src/partners.js",
-    "start:fast": "ENABLE_CHAOS=false PORT=3001 OTEL_SERVICE_NAME=skyward-search-fixed node --env-file=.env --import @elastic/opentelemetry-node src/app.js",
+    "start:fast": "ENABLE_CHAOS=false PORT=3001 OTEL_SERVICE_NAME=skyward-search-fixed node --import @elastic/opentelemetry-node src/app.js",
     "stop": "pkill -f src/app.js || true",
     "restart:elastic": "npm run stop && npm start",
     "load": "node load/search.js",

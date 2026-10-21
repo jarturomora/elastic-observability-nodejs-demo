@@ -131,7 +131,7 @@ test('GET /api/insights returns 200 with avg_price_cents and X-Request-Id', asyn
   assert.ok(Array.isArray(body.recent_searches), 'body should have recent_searches array');
 });
 
-test('POST /api/chat returns a reply in the AFTER build (500 only in BEFORE)', async () => {
+test('POST /api/chat returns 200 with a reply (AFTER build: no degraded fallback)', async () => {
   const res = await fetch(`http://localhost:${appPort}/api/chat`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -146,6 +146,30 @@ test('POST /api/chat returns a reply in the AFTER build (500 only in BEFORE)', a
     typeof body.request_id === 'string' && body.request_id.startsWith('req_'),
     `request_id missing or malformed: ${JSON.stringify(body)}`
   );
+  assert.ok(!body.degraded, 'AFTER build should not hit the degraded fallback');
+});
+
+test('POST /api/chat on the BEFORE build returns the 200 degraded fallback', async () => {
+  const beforePort = await freePort();
+  const proc = spawn('node', ['src/app.js'], {
+    cwd: ROOT,
+    env: { ...process.env, DATABASE_URL: DB_URL, ENABLE_CHAOS: 'true', PORT: String(beforePort) },
+    stdio: 'pipe',
+  });
+  try {
+    await waitForPort(beforePort);
+    const res = await fetch(`http://localhost:${beforePort}/api/chat`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message: 'Is the direct flight available?', user: 1 }),
+    });
+    assert.equal(res.status, 200, 'chat should answer 200 even when the history lookup fails');
+    const body = await res.json();
+    assert.equal(body.degraded, true, 'degraded flag missing');
+    assert.match(body.reply, /couldn't load your recent searches/);
+  } finally {
+    proc.kill();
+  }
 });
 
 test('POST /api/book returns 200 confirmed with request_id', async () => {
