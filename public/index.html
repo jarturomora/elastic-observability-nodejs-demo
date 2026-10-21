@@ -503,7 +503,7 @@
       const body = await res.json().catch(() => ({}));
       if (res.ok && body.reply) {
         typingEl.remove();
-        addChatMsg(body.reply, 'bot');
+        addChatMsg(body.reply, 'bot', body.degraded ? 'error' : '');
       } else {
         // Dots stay. Log a traceable reference; dev can match rid in Elastic.
         console.debug('[chat:ERR_' + res.status + '] handler threw - rid=' + (body.request_id || 'n/a'), body);
