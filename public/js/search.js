@@ -78,12 +78,6 @@ function renderStatusBar(data) {
   };
   addPill('partners', `${data.partners_responded}/${data.partners_total} partners`);
   addPill('time', `${(data.elapsed_ms / 1000).toFixed(2)}s`);
-  if (data.trend_avg_cents && searchResults.length) {
-    const best = searchResults[0].priceCents;
-    const pct = Math.round(Math.abs(best - data.trend_avg_cents) / data.trend_avg_cents * 100);
-    const dir = best < data.trend_avg_cents ? 'below' : 'above';
-    addPill(`trend-${dir}`, `${pct}% ${dir} route avg`);
-  }
 }
 
 function startTimer() {

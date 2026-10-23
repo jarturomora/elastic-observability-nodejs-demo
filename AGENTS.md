@@ -50,7 +50,7 @@ EDOT reads `OTEL_*` at `--import` time. Node loads `--env-file` before preloads,
 - `src/llm.js` — prompt construction (`buildMessages`, `POLICY_FACTS`) and the model client (`createLlm`). Tests mock the `{ generate(messages) }` boundary.
 - `src/partner-client.js` — each partner call creates its **own** `AbortSignal.timeout`; never share one signal across calls.
 - `public/js/*.js` — UI as ES modules (no inline scripts); `public/js/chat.js` exports `requestChat`.
-- The app's LLM is not Elastic's investigation agent. Don't conflate them in docs.
+- Three different AIs, never conflate them in docs or code: the app's LLM (answers chat), Elastic's investigation agent (reads telemetry), and Claude Code (the coding assistant that works on this repo; a dev tool, not part of the running app). The diagram is `architecture.svg`; keep it in step with the setup.
 
 ## Chat model
 

@@ -25,7 +25,9 @@ The application source contains no OpenTelemetry code. Elastic gets traces, metr
 | Backend → LLM provider | `/api/chat` builds a prompt from the question, the retrieved searches and demo policy facts, then calls an OpenAI-compatible Chat Completions endpoint (a small local Ollama model by default, or OpenAI) |
 | Backend → Elastic | EDOT sends traces, metrics and logs over OTLP |
 
-**Two different "AIs":** the *app's LLM* answers travellers in the chat widget. *Elastic's investigation agent* is a feature of Elastic Observability that reads the telemetry to help you diagnose problems. They are unrelated; this repo only builds the first.
+**Three different "AIs":** the *app's LLM* answers travellers in the chat widget. *Elastic's investigation agent* is a feature of Elastic Observability that reads the telemetry to help you diagnose problems. *Claude Code* is the AI coding assistant used to write and debug this app (it follows [AGENTS.md](AGENTS.md)); it is a development tool and is not part of the running system. They are unrelated; this repo only builds the first.
+
+In the diagram, your machine runs the browser and the Node.js backend (`npm start`), Docker Compose runs the partners, PostgreSQL and the local model (`npm run services`), and telemetry goes to Elastic Cloud. The red tags mark the two intentional bugs.
 
 ## The two default bugs
 
@@ -108,7 +110,7 @@ npm run start:search-fixed # :3002, service skyward-travel-app-search-fixed
 npm run start:chat-fixed   # :3003, service skyward-travel-app-chat-fixed
 ```
 
-The compare page labels each pane with the bugs that server reports as active (`GET /api/mode`). Under Path B only the before (:3000) and all-fixed (:3001) apps are provided.
+`npm start` alone only starts the :3000 app. The compare page needs the second app on :3001 as well: `npm run dev:compare` starts both, or run `npm start` and `npm run start:fast` in two terminals. The page labels each pane with the bugs that server reports as active (`GET /api/mode`); if a server isn't running, the label says which command starts it and the pane loads by itself once it is up. Under Path B only the before (:3000) and all-fixed (:3001) apps are provided.
 
 ## Inspecting the model call in Elastic
 

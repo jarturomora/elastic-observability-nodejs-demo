@@ -1,65 +1,109 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1100 640" font-family="system-ui, -apple-system, Segoe UI, sans-serif">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 760" font-family="system-ui, -apple-system, Segoe UI, sans-serif">
   <title>Skyward architecture</title>
   <defs>
     <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#1c2333"/></marker>
     <marker id="t" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#0b8a80"/></marker>
+    <marker id="c" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#7a4bc4"/></marker>
   </defs>
   <style>
+    .zone{fill:none;stroke:#aab3c5;stroke-width:2;stroke-dasharray:8 6;rx:18}
+    .zl{font-size:14px;font-weight:700;fill:#6b7690;letter-spacing:.04em}
     .box{fill:#fff;stroke:#1c2333;stroke-width:2.5;rx:14}
     .h{font-size:20px;font-weight:700;fill:#1c2333;text-anchor:middle}
     .s{font-size:14px;fill:#55607a;text-anchor:middle}
-    .l{font-size:13px;fill:#1c2333;text-anchor:middle}
-    .t{font-size:13px;fill:#0b8a80;text-anchor:middle;font-weight:600}
     .e{stroke:#1c2333;stroke-width:2.5;fill:none}
     .tel{stroke:#0b8a80;stroke-width:2.5;fill:none;stroke-dasharray:7 5}
+    .cc{stroke:#7a4bc4;stroke-width:2.5;fill:none}
+    .lbl{font-size:13px;fill:#1c2333;text-anchor:middle;paint-order:stroke;stroke:#fafbfc;stroke-width:6px;stroke-linejoin:round}
+    .bug{fill:#fde8e8;stroke:#c0392b;stroke-width:1.5;rx:11}
+    .bugt{font-size:12.5px;font-weight:700;fill:#a52a1e;text-anchor:middle}
   </style>
-  <rect width="1100" height="640" fill="#fafbfc"/>
+  <rect width="1200" height="760" fill="#fafbfc"/>
 
-  <rect class="box" x="30" y="240" width="190" height="110"/>
-  <text class="h" x="125" y="285">Browser</text><text class="s" x="125" y="310">Skyward UI (ES modules)</text>
+  <!-- zones -->
+  <rect class="zone" x="20" y="130" width="660" height="340"/>
+  <text class="zl" x="40" y="156">YOUR MACHINE</text>
+  <rect class="zone" x="780" y="30" width="400" height="540"/>
+  <text class="zl" x="800" y="56">DOCKER COMPOSE · services</text>
+  <rect class="zone" x="20" y="520" width="660" height="210" style="stroke:#0b8a80"/>
+  <text class="zl" x="40" y="546" style="fill:#0b8a80">ELASTIC CLOUD</text>
 
-  <rect class="box" x="360" y="190" width="300" height="210" style="stroke:#d98a16"/>
-  <text class="h" x="510" y="228">Node.js backend</text>
-  <text class="s" x="510" y="252">Express · pg · openai (ESM)</text>
-  <text class="s" x="510" y="284" style="font-family:monospace">GET  /api/search · /api/insights</text>
-  <text class="s" x="510" y="306" style="font-family:monospace">POST /api/chat · /api/book</text>
-  <rect x="395" y="340" width="230" height="38" rx="19" fill="#fbd24d"/>
-  <text class="l" x="510" y="364" style="font-weight:700">+ EDOT Node.js (--import)</text>
+  <!-- Claude Code (developer tooling) -->
+  <rect x="320" y="20" width="330" height="88" rx="14" fill="#f5effd" stroke="#7a4bc4" stroke-width="2.5"/>
+  <text class="h" x="485" y="52" style="fill:#4d2a8c">Claude Code</text>
+  <text class="s" x="485" y="76">AI coding assistant: writes and debugs</text>
+  <text class="s" x="485" y="94">the app, guided by AGENTS.md</text>
+  <path class="cc" d="M485 108 V172" marker-end="url(#c)"/>
+  <text class="lbl" x="560" y="146" style="fill:#4d2a8c">edits / fixes code</text>
 
-  <rect class="box" x="760" y="30" width="310" height="150"/>
-  <text class="h" x="915" y="62">Flight providers (mock)</text>
-  <text class="s" x="915" y="90">PuffinAir :4001 · GooseJet :4002</text>
-  <text class="s" x="915" y="112">Pelican Air :4003 · Penguin Air :4004</text>
-  <text class="s" x="915" y="146">1.3 s each · sequential vs concurrent</text>
+  <!-- browser + backend -->
+  <rect class="box" x="40" y="235" width="190" height="110"/>
+  <text class="h" x="135" y="280">Browser</text><text class="s" x="135" y="305">Skyward UI</text>
 
-  <rect class="box" x="760" y="215" width="310" height="110"/>
-  <text class="h" x="915" y="255">PostgreSQL</text>
-  <text class="s" x="915" y="280">recent searches = retrieved user context</text>
-  <text class="s" x="915" y="300">:5432 (Docker)</text>
+  <rect class="box" x="320" y="175" width="330" height="250" style="stroke:#d98a16"/>
+  <text class="h" x="485" y="215">Node.js backend</text>
+  <text class="s" x="485" y="241">Express · serves the UI and the API</text>
+  <text class="s" x="485" y="275">search · insights · chat · book</text>
+  <text class="s" x="485" y="312" style="font-style:italic">calls the partners</text>
+  <text class="s" x="485" y="332" style="font-style:italic">queries PostgreSQL for recent searches</text>
+  <text class="s" x="485" y="352" style="font-style:italic">calls the LLM to answer the chat</text>
+  <rect x="380" y="378" width="210" height="36" rx="18" fill="#fbd24d"/>
+  <text x="485" y="401" style="font-size:13px;font-weight:700;fill:#1c2333;text-anchor:middle">+ EDOT auto-instrumentation</text>
 
-  <rect class="box" x="760" y="360" width="310" height="120"/>
-  <text class="h" x="915" y="397">LLM</text>
-  <text class="s" x="915" y="422">Local model (Ollama container)</text>
-  <text class="s" x="915" y="442">or OpenAI, same client</text>
-  <text class="s" x="915" y="462">answers the app's chat</text>
+  <path class="e" d="M232 290 H316" marker-end="url(#a)" marker-start="url(#a)"/>
+  <text class="lbl" x="274" y="278">HTTP</text>
 
-  <rect class="box" x="360" y="500" width="300" height="110" style="stroke:#0b8a80"/>
-  <text class="h" x="510" y="535">Elastic Observability</text>
-  <text class="s" x="510" y="558">traces · metrics · logs (OTLP)</text>
-  <text class="s" x="510" y="580">APM, Service map, GenAI spans</text>
-  <rect x="700" y="520" width="370" height="90" rx="14" fill="#f1fbfa" stroke="#0b8a80" stroke-width="2" stroke-dasharray="6 4"/>
-  <text class="t" x="885" y="548">Elastic's investigation agent</text>
-  <text class="s" x="885" y="570">reads this telemetry to diagnose the bugs.</text>
-  <text class="s" x="885" y="590">A separate thing from the app's LLM above.</text>
+  <!-- docker services -->
+  <rect class="box" x="805" y="70" width="350" height="120"/>
+  <text class="h" x="980" y="100">Flight providers (mock)</text>
+  <text class="s" x="980" y="124">PuffinAir · GooseJet · Pelican Air · Penguin Air</text>
+  <text class="s" x="980" y="144">:4001 to :4004, 1.3 s each</text>
+  <rect class="bug" x="850" y="154" width="260" height="24"/>
+  <text class="bugt" x="980" y="171">BUG 1 · called one at a time (4 × 1.3 s)</text>
 
-  <path class="e" d="M220 295 H355" marker-end="url(#a)" marker-start="url(#a)"/>
-  <text class="l" x="288" y="283">HTTP</text>
-  <path class="e" d="M660 245 C700 200 710 130 755 110" marker-end="url(#a)"/>
-  <text class="l" x="712" y="150">/fares</text>
-  <path class="e" d="M660 290 H755" marker-end="url(#a)"/>
-  <text class="l" x="708" y="281">SQL</text>
-  <path class="e" d="M660 345 C700 380 710 400 755 410" marker-end="url(#a)"/>
-  <text class="l" x="720" y="398">prompt</text>
-  <path class="tel" d="M510 400 V495" marker-end="url(#t)"/>
-  <text class="t" x="560" y="455">OTLP</text>
+  <rect class="box" x="805" y="250" width="350" height="110"/>
+  <text class="h" x="980" y="282">PostgreSQL</text>
+  <text class="s" x="980" y="304">users, fares, recent searches</text>
+  <rect class="bug" x="855" y="320" width="250" height="24"/>
+  <text class="bugt" x="980" y="337">BUG 2 · chat query not awaited</text>
+
+  <rect class="box" x="805" y="410" width="350" height="130"/>
+  <text class="h" x="980" y="442">LLM</text>
+  <text class="s" x="980" y="466">Ollama container (small local model)</text>
+  <text class="s" x="980" y="486">or the OpenAI API, same client</text>
+  <text class="s" x="980" y="512" style="font-style:italic">never reached when BUG 2 fires</text>
+
+  <path class="e" d="M652 225 C730 225 720 130 800 130" marker-end="url(#a)"/>
+  <text class="lbl" x="722" y="183">fares</text>
+  <path class="e" d="M652 305 H800" marker-end="url(#a)"/>
+  <text class="lbl" x="726" y="295">SQL</text>
+  <path class="e" d="M652 385 C730 385 720 475 800 475" marker-end="url(#a)"/>
+  <text class="lbl" x="722" y="438">prompt</text>
+
+  <!-- telemetry -->
+  <path class="tel" d="M485 427 V555" marker-end="url(#t)"/>
+  <text class="lbl" x="500" y="492" style="fill:#0b8a80;font-weight:600;text-anchor:start">OTLP: traces, metrics, logs</text>
+
+  <rect class="box" x="320" y="560" width="330" height="140" style="stroke:#0b8a80"/>
+  <text class="h" x="485" y="598">Elastic Observability</text>
+  <text class="s" x="485" y="622">APM, service map, logs</text>
+  <text class="s" x="485" y="642">GenAI spans for the model call</text>
+  <text class="s" x="485" y="672">model and partners are not instrumented</text>
+
+  <rect x="40" y="575" width="230" height="110" rx="14" fill="#f1fbfa" stroke="#0b8a80" stroke-width="2" stroke-dasharray="6 4"/>
+  <text x="155" y="608" style="font-size:16px;font-weight:700;fill:#0b8a80;text-anchor:middle">Elastic's investigation</text>
+  <text x="155" y="628" style="font-size:16px;font-weight:700;fill:#0b8a80;text-anchor:middle">agent</text>
+  <text class="s" x="155" y="654">diagnoses the bugs from</text>
+  <text class="s" x="155" y="672">the telemetry</text>
+  <path class="tel" d="M272 630 H316" marker-end="url(#t)"/>
+  <text class="lbl" x="294" y="620" style="fill:#0b8a80">reads</text>
+
+  <!-- legend -->
+  <text class="zl" x="800" y="606">THREE DIFFERENT AIs</text>
+  <text class="s" x="800" y="630" style="text-anchor:start"><tspan style="font-weight:700;fill:#4d2a8c">Claude Code</tspan>: builds and debugs the app (dev tool)</text>
+  <text class="s" x="800" y="652" style="text-anchor:start"><tspan style="font-weight:700;fill:#1c2333">LLM</tspan>: answers travellers inside the running app</text>
+  <text class="s" x="800" y="674" style="text-anchor:start"><tspan style="font-weight:700;fill:#0b8a80">Investigation agent</tspan>: Elastic's, reads telemetry</text>
+  <rect class="bug" x="800" y="692" width="64" height="22"/>
+  <text class="bugt" x="832" y="708">BUG</text>
+  <text class="s" x="876" y="708" style="text-anchor:start">intentional, for the tutorial</text>
 </svg>
