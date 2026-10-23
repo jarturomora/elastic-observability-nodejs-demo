@@ -1,6 +1,33 @@
+# The chat model runs locally in the `ollama` container (CPU is fine). `ollama-pull` downloads it once
+# into the `ollama` volume (~1 GB for the default); later starts reuse it.
+# Change the model with LOCAL_MODEL in .env (e.g. LOCAL_MODEL=qwen2.5:0.5b for a ~400 MB download).
 services:
+  ollama:
+    image: ollama/ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama:/root/.ollama
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  ollama-pull:
+    image: ollama/ollama
+    environment:
+      OLLAMA_HOST: http://ollama:11434
+    entrypoint: ["ollama", "pull", "${LOCAL_MODEL:-qwen2.5:1.5b}"]
+    depends_on:
+      ollama:
+        condition: service_healthy
+    restart: "no"
+
   db:
     image: postgres:16
+    ports:
+      - "5432:5432"
     environment:
       POSTGRES_PASSWORD: postgres
       POSTGRES_DB: skyward
@@ -22,11 +49,19 @@ services:
   partners:
     build: .
     command: node src/partners.js
-    env_file: [.env]
+    ports:
+      - "4001-4004:4001-4004"
+    # Explicit settings only: partners must not receive OPENAI_API_KEY or OTEL_* credentials.
+    environment:
+      PARTNER_LATENCY_MS: ${PARTNER_LATENCY_MS:-1300}
+      FARES_PER_PARTNER: ${FARES_PER_PARTNER:-3000}
     depends_on:
       db:
         condition: service_healthy
 
+  # EDOT reads OTEL_* when node starts, so they must be in the container environment up front.
+  # env_file does that (it is applied before `node --import @elastic/opentelemetry-node` runs).
+  # Values exported in your shell are NOT forwarded unless listed under `environment:`.
   app:
     build: .
     ports:
@@ -35,7 +70,11 @@ services:
     environment:
       DATABASE_URL: postgres://postgres:postgres@db:5432/skyward
       PARTNER_HOST: partners
+      OPENAI_BASE_URL: http://ollama:11434/v1
+      OPENAI_MODEL: ${LOCAL_MODEL:-qwen2.5:1.5b}
     depends_on:
+      ollama-pull:
+        condition: service_completed_successfully
       db:
         condition: service_healthy
       partners:
@@ -52,11 +91,18 @@ services:
       DATABASE_URL: postgres://postgres:postgres@db:5432/skyward
       PARTNER_HOST: partners
       ENABLE_CHAOS: "false"
-      OTEL_SERVICE_NAME: skyward-search-fixed
+      OTEL_SERVICE_NAME: skyward-travel-app-fixed
+      OPENAI_BASE_URL: http://ollama:11434/v1
+      OPENAI_MODEL: ${LOCAL_MODEL:-qwen2.5:1.5b}
     depends_on:
+      ollama-pull:
+        condition: service_completed_successfully
       db:
         condition: service_healthy
       partners:
         condition: service_started
       seed:
         condition: service_completed_successfully
+
+volumes:
+  ollama:

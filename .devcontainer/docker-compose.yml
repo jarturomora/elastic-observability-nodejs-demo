@@ -6,9 +6,24 @@ services:
     command: sleep infinity
     environment:
       DATABASE_URL: postgres://postgres:postgres@db:5432/skyward
+      # Chat model runs in the `ollama` container (container env wins over .env).
+      OPENAI_BASE_URL: http://ollama:11434/v1
+      OPENAI_MODEL: qwen2.5:1.5b
     depends_on:
       db:
         condition: service_healthy
+      ollama:
+        condition: service_healthy
+
+  ollama:
+    image: ollama/ollama
+    volumes:
+      - ollama:/root/.ollama
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
 
   db:
     image: postgres:16
@@ -20,3 +35,6 @@ services:
       interval: 5s
       timeout: 5s
       retries: 10
+
+volumes:
+  ollama:

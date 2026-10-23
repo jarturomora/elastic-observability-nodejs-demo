@@ -1,7 +1,7 @@
 {
   "name": "skyward",
   "version": "1.0.0",
-  "description": "Skyward flight aggregator — demos Elastic Observability with EDOT Node.js",
+  "description": "Skyward flight aggregator with an LLM travel chatbot: a Node.js observability tutorial for Elastic (EDOT)",
   "type": "module",
   "engines": {
     "node": ">=20.12"
@@ -11,25 +11,37 @@
     "dev": "bash scripts/dev.sh",
     "dev:compare": "bash scripts/compare.sh",
     "stop:all": "bash scripts/stop.sh",
-    "verify": "node --env-file=.env scripts/verify.js",
-    "test": "node --env-file=.env --test test/smoke.test.js",
+    "verify": "node scripts/verify.js",
+    "test": "node --test test/*.test.js",
     "seed": "node --env-file=.env src/seed.js",
-    "start": "node --import @elastic/opentelemetry-node src/app.js",
-    "start:plain": "node src/app.js",
+    "start": "node --env-file=.env --import @elastic/opentelemetry-node src/app.js",
+    "start:plain": "node --env-file=.env src/app.js",
     "start:partners": "node --env-file=.env src/partners.js",
-    "start:fast": "ENABLE_CHAOS=false PORT=3001 OTEL_SERVICE_NAME=skyward-search-fixed node --import @elastic/opentelemetry-node src/app.js",
-    "stop": "pkill -f src/app.js || true",
-    "restart:elastic": "npm run stop && npm start",
+    "start:fast": "ENABLE_CHAOS=false PORT=3001 OTEL_SERVICE_NAME=skyward-travel-app-fixed node --env-file=.env --import @elastic/opentelemetry-node src/app.js",
+    "stop": "pkill -f 'src/app.js' || true",
     "load": "node load/search.js",
-    "load:fast": "LOAD_URL=http://localhost:3001 node load/search.js"
+    "load:fast": "LOAD_URL=http://localhost:3001 node load/search.js",
+    "test:live-llm": "node --env-file=.env --test test/live/llm.live.js",
+    "start:search-fixed": "CHAOS_STAIRCASE=false PORT=3002 OTEL_SERVICE_NAME=skyward-travel-app-search-fixed node --env-file=.env --import @elastic/opentelemetry-node src/app.js",
+    "start:chat-fixed": "CHAOS_CHAT=false PORT=3003 OTEL_SERVICE_NAME=skyward-travel-app-chat-fixed node --env-file=.env --import @elastic/opentelemetry-node src/app.js",
+    "restart": "npm run stop && npm start",
+    "pretest": "bash scripts/test-db.sh"
   },
   "dependencies": {
-    "@elastic/opentelemetry-node": "^1.18.0",
+    "@elastic/opentelemetry-node": "^1.19.0",
     "express": "^4.22.2",
+    "openai": "^6.49.0",
     "pg": "^8.23.0",
     "pino": "^10.3.1"
   },
   "devDependencies": {
     "autocannon": "^2.0.1"
-  }
+  },
+  "license": "Apache-2.0",
+  "private": true,
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/suyashcjoshi/elastic-observability-nodejs-demo.git"
+  },
+  "homepage": "https://github.com/suyashcjoshi/elastic-observability-nodejs-demo#readme"
 }

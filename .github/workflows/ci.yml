@@ -39,7 +39,7 @@ jobs:
         env:
           DATABASE_URL: postgres://postgres:postgres@localhost:5432/skyward
 
-      - name: Run smoke tests
+      - name: Run tests (mocked model; no paid calls)
         run: npm test
         env:
           DATABASE_URL: postgres://postgres:postgres@localhost:5432/skyward

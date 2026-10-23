@@ -1,46 +1,33 @@
 #!/usr/bin/env bash
+# Starts everything the app depends on, in Docker Compose: PostgreSQL (seeded), the four partner
+# mocks and the Ollama chat model. Does NOT start the app (npm start does).
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
-[ -f .env ] || cp .env.example .env
+command -v docker >/dev/null || { echo "Docker is required: https://docs.docker.com/get-docker/" >&2; exit 1; }
 
-# Start postgres via docker if not already running
-if ! docker ps --filter name=skyward-db --filter status=running -q 2>/dev/null | grep -q .; then
-  if docker ps -a --filter name=skyward-db -q 2>/dev/null | grep -q .; then
-    echo "Starting existing skyward-db container..."
-    docker start skyward-db
-  else
-    echo "Creating skyward-db container..."
-    docker run --name skyward-db \
-      -e POSTGRES_PASSWORD=postgres \
-      -e POSTGRES_DB=skyward \
-      -p 5432:5432 -d postgres:16
-  fi
+if [ ! -f .env ]; then
+  cp .env.example .env
+  echo "Created .env from .env.example (add your Elastic OTEL_* settings to it)."
 fi
 
-echo "Waiting for Postgres to be ready..."
-for i in $(seq 1 30); do
-  if docker exec skyward-db pg_isready -U postgres >/dev/null 2>&1; then
-    echo "Postgres ready."
-    break
-  fi
-  if [ "$i" -eq 30 ]; then
-    echo "Postgres did not become ready after 60 s." >&2
-    exit 1
-  fi
-  echo "  attempt $i/30 — retrying in 2 s..."
-  sleep 2
-done
+# Older versions of this repo ran Postgres as a plain `docker run` container on :5432.
+if docker ps -q --filter name='^skyward-db$' | grep -q .; then
+  echo "Stopping the legacy skyward-db container (Postgres now runs under docker compose)."
+  docker stop skyward-db >/dev/null
+fi
 
-npm run seed
+echo "Starting PostgreSQL, partner mocks and Ollama..."
+docker compose up -d --build --wait db partners ollama
 
-# Kill any previous partners so re-running is idempotent
-pkill -f src/partners.js 2>/dev/null || true
-sleep 1
+echo "Seeding the database..."
+docker compose run --rm --no-deps seed
 
-nohup node --env-file=.env src/partners.js >/tmp/partners.log 2>&1 &
-echo $! > /tmp/skyward-partners.pid
-echo "Partners starting on :4001-4004 (logs: /tmp/partners.log)"
-echo "Services ready. Start the app with: npm start"
+echo "Making sure the chat model is downloaded (first run is ~1 GB, later runs are instant)..."
+docker compose run --rm --no-deps ollama-pull
+
+echo ""
+echo "Services ready: Postgres :5432, partners :4001-4004, Ollama :11434."
+echo "Start the app with: npm start"

@@ -23,12 +23,17 @@ if [ "$seeded" = false ]; then
 fi
 echo "✅ Database ready"
 
+# Download the chat model in the background (~1 GB, first start only; later starts reuse the volume).
+# Chat returns 502 until the pull finishes; check /tmp/ollama-pull.log.
+nohup curl -s http://ollama:11434/api/pull -d "{\"model\":\"${OPENAI_MODEL:-qwen2.5:1.5b}\"}" > /tmp/ollama-pull.log 2>&1 &
+echo "🧠 Pulling chat model ${OPENAI_MODEL:-qwen2.5:1.5b} in the background (log: /tmp/ollama-pull.log)"
+
 # Kill any previous instances so re-running this script is safe.
 pkill -f src/partners.js 2>/dev/null || true
 pkill -f src/app.js     2>/dev/null || true
 sleep 1
 
-# Start mock partners (SkyJet :4001, AeroLuz :4002, Nimbus :4003, Zephyr :4004).
+# Start mock partners (PuffinAir :4001, GooseJet :4002, Pelican Air :4003, Penguin Air :4004).
 # Reads latency vars from .env; DATABASE_URL from the container environment takes precedence.
 nohup node --env-file=.env src/partners.js > /tmp/partners.log 2>&1 &
 echo "🤝 Mock partners starting (logs: /tmp/partners.log)"
@@ -53,7 +58,8 @@ echo ""
 echo " To connect to Elastic Cloud, in a terminal:"
 echo "   1. export OTEL_EXPORTER_OTLP_ENDPOINT=... OTEL_EXPORTER_OTLP_HEADERS=..."
 echo "      export OTEL_SERVICE_NAME=skyward-travel-app"
-echo "   2. Run: npm run restart:elastic"
+echo "      (or add them as Codespaces secrets)"
+echo "   2. Run: npm run restart"
 echo ""
 echo " See README → 'Try it in GitHub Codespaces' for full instructions."
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"

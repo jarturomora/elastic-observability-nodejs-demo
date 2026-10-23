@@ -4,8 +4,6 @@ import http from 'node:http';
 
 const FARES_PER_PARTNER = parseInt(process.env.FARES_PER_PARTNER || '3000');
 const BASE_LATENCY_MS   = parseInt(process.env.PARTNER_LATENCY_MS || '1300');
-const DEGRADED          = process.env.PENGUIN_DEGRADED === 'true';
-const FAIL_RATE         = parseFloat(process.env.PARTNER_FAIL_RATE || '0.03');
 
 const PARTNERS = {
   4001: { name: 'PuffinAir',   code: 'PF' },
@@ -69,7 +67,7 @@ function getRealisticFares(port, origin, destination, date) {
 }
 
 // Filler fares — priced above $1,200 and very long duration so they never reach top-50
-// results, but provide FARES_PER_PARTNER volume for the O(n²) dedupe workload.
+// results, but provide FARES_PER_PARTNER volume.
 function generateFillerFares(port, origin, destination, date, count) {
   const { name: airline, code } = PARTNERS[port];
   const portOffset = port - 4001;
@@ -100,19 +98,8 @@ function generateFillerFares(port, origin, destination, date, count) {
 }
 
 function createPartnerServer(port) {
-  const isPenguin = port === 4004;
-
-  async function applyLatency() {
-    if (isPenguin && DEGRADED) {
-      // Opt-in (PENGUIN_DEGRADED=true): Penguin Air adds 5.2 s + 15% 503. Drives the CHAOS_PARTNER/booking bug.
-      if (Math.random() < 0.15) return 503;
-      await new Promise(r => setTimeout(r, 5200));
-    } else {
-      if (Math.random() < FAIL_RATE) return 503;
-      await new Promise(r => setTimeout(r, BASE_LATENCY_MS));
-    }
-    return 200;
-  }
+  // Every partner is slow by the same fixed amount; this is the latency the demo teaches with.
+  const applyLatency = () => new Promise(r => setTimeout(r, BASE_LATENCY_MS));
 
   const server = http.createServer(async (req, res) => {
     const url  = new URL(req.url, `http://localhost:${port}`);
@@ -125,12 +112,7 @@ function createPartnerServer(port) {
     // ── /confirm ─────────────────────────────────────────────────────────────
     if (path === '/confirm') {
       const flightId = url.searchParams.get('flight_id') || '';
-      const status = await applyLatency();
-      if (status !== 200) {
-        res.writeHead(503, { 'Content-Type': 'text/plain' });
-        res.end('Service unavailable');
-        return;
-      }
+      await applyLatency();
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ confirmed: true, flight_id: flightId, partner: PARTNERS[port].name }));
       return;
@@ -138,12 +120,7 @@ function createPartnerServer(port) {
 
     // ── /fares ───────────────────────────────────────────────────────────────
     const { origin, destination, date } = Object.fromEntries(url.searchParams);
-    const status = await applyLatency();
-    if (status !== 200) {
-      res.writeHead(503, { 'Content-Type': 'text/plain' });
-      res.end('Service unavailable');
-      return;
-    }
+    await applyLatency();
 
     const realistic = getRealisticFares(port, origin, destination, date);
     const fillerCount = Math.max(0, FARES_PER_PARTNER - realistic.length);

@@ -1,43 +1,15 @@
-// Smoke test: spawns partners + app, verifies all key endpoints, then shuts down.
+// Integration test: real PostgreSQL + the real partner mock servers + real app processes.
+// The model is a local fake OpenAI-compatible server (the real openai client talks to it over HTTP),
+// so CI never makes a paid call. Needs Postgres seeded (`npm run seed`) and ports 4001-4004 free.
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { spawn } from 'node:child_process';
-import net from 'node:net';
-import { fileURLToPath } from 'node:url';
-import { dirname, join } from 'node:path';
-
-const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
-
-function freePort() {
-  return new Promise((resolve, reject) => {
-    const srv = net.createServer();
-    srv.listen(0, '127.0.0.1', () => {
-      const { port } = srv.address();
-      srv.close(() => resolve(port));
-    });
-    srv.on('error', reject);
-  });
-}
-
-function waitForPort(port, timeout = 30_000) {
-  const deadline = Date.now() + timeout;
-  return new Promise((resolve, reject) => {
-    function attempt() {
-      const sock = net.connect(port, '127.0.0.1', () => { sock.destroy(); resolve(); });
-      sock.on('error', () => {
-        if (Date.now() > deadline) return reject(new Error(`port ${port} not open after ${timeout}ms`));
-        setTimeout(attempt, 250);
-      });
-    }
-    attempt();
-  });
-}
-
-let appPort;
-let partnersProc;
-let appProc;
+import pg from 'pg';
+import { freePort, waitForPort, spawnNode } from './helpers/harness.js';
+import { startFakeOpenAI } from './helpers/fake-openai.js';
 
 const DB_URL = process.env.DATABASE_URL || 'postgres://postgres:postgres@localhost:5432/skyward';
+const LATENCY = 150;
+const REPLY = 'FAKE PROVIDER ANSWER';
 
 const nextThursday = (() => {
   const d = new Date();
@@ -45,148 +17,187 @@ const nextThursday = (() => {
   d.setDate(d.getDate() + gap);
   return d.toISOString().slice(0, 10);
 })();
+const SEARCH = (user) => `/api/search?origin=LHR&destination=SFO&date=${nextThursday}&user=${user}&sort=fastest`;
 
-let cachedFareId = null;
+let pool, partners, fake, failingFake;
+const apps = {};   // name → { proc, base }
+const procs = [];
+
+async function startAppProc(name, env) {
+  const port = await freePort();
+  const proc = spawnNode(['src/app.js'], { DATABASE_URL: DB_URL, PORT: String(port), ...env });
+  procs.push(proc);
+  await waitForPort(port);
+  apps[name] = { proc, base: `http://127.0.0.1:${port}` };
+}
+const post = (app, path, body) => fetch(apps[app].base + path, {
+  method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+});
 
 before(async () => {
-  appPort = await freePort();
+  for (const port of [4001, 4002, 4003, 4004]) {
+    const busy = await waitForPort(port, 300).then(() => true, () => false);
+    assert.ok(!busy, `port ${port} is in use (npm run services?). This test starts its own fast partners: run \`docker compose stop partners\` first.`);
+  }
+  pool = new pg.Pool({ connectionString: DB_URL });
+  const partnerEnv = { FARES_PER_PARTNER: '200', PARTNER_LATENCY_MS: String(LATENCY) };
+  partners = spawnNode(['src/partners.js'], partnerEnv);
+  procs.push(partners);
+  fake = await startFakeOpenAI({ reply: REPLY });
+  failingFake = await startFakeOpenAI({ status: 500 });
+  await Promise.all([4001, 4002, 4003, 4004].map(p => waitForPort(p)));
 
-  const baseEnv = {
-    ...process.env,
-    DATABASE_URL: DB_URL,
-    FARES_PER_PARTNER: '50',
-    ENABLE_CHAOS: 'false',
-    PARTNER_LATENCY_MS: '10',
-    PARTNER_FAIL_RATE: '0',
-  };
-
-  partnersProc = spawn('node', ['src/partners.js'], { cwd: ROOT, env: baseEnv, stdio: 'pipe' });
-  appProc = spawn('node', ['src/app.js'], {
-    cwd: ROOT,
-    env: { ...baseEnv, PORT: String(appPort) },
-    stdio: 'pipe',
-  });
-
-  partnersProc.on('error', (err) => { throw err; });
-  appProc.on('error', (err) => { throw err; });
-
+  const llm = { OPENAI_API_KEY: 'test-key', OPENAI_BASE_URL: fake.url, OPENAI_MODEL: 'test-model' };
+  // "before" = defaults (flags unset): sequential search + chat missing await
+  delete process.env.ENABLE_CHAOS; delete process.env.CHAOS_STAIRCASE; delete process.env.CHAOS_CHAT;
   await Promise.all([
-    waitForPort(4001),
-    waitForPort(4002),
-    waitForPort(4003),
-    waitForPort(4004),
-    waitForPort(appPort),
+    startAppProc('before', { ...llm }),
+    startAppProc('after', { ...llm, ENABLE_CHAOS: 'false' }),
+    startAppProc('chatFixedOnly', { ...llm, CHAOS_CHAT: 'false' }),
+    startAppProc('searchFixedOnly', { ...llm, CHAOS_STAIRCASE: 'false' }),
+    startAppProc('providerDown', { OPENAI_API_KEY: 'test-key', OPENAI_BASE_URL: failingFake.url, ENABLE_CHAOS: 'false' }),
+    startAppProc('modelDown', { ENABLE_CHAOS: 'false', OPENAI_BASE_URL: 'http://127.0.0.1:1/v1' }),
   ]);
 });
 
-after(() => {
-  partnersProc?.kill();
-  appProc?.kill();
+after(async () => {
+  procs.forEach(p => p.kill());
+  await Promise.all([fake?.close(), failingFake?.close(), pool?.end()]);
+});
+
+test('/api/mode reports the active scenarios per build', async () => {
+  const mode = async n => (await fetch(apps[n].base + '/api/mode')).json();
+  assert.deepEqual((await mode('before')).chaos, { staircase: true, chat: true });
+  assert.ok(Object.values((await mode('after')).chaos).every(v => v === false));
+  const c = (await mode('chatFixedOnly')).chaos;
+  assert.equal(c.chat, false); assert.equal(c.staircase, true);
+  const s = (await mode('searchFixedOnly')).chaos;
+  assert.equal(s.chat, true); assert.equal(s.staircase, false);
 });
 
 test('GET /health returns ok with X-Request-Id', async () => {
-  const res = await fetch(`http://localhost:${appPort}/health`);
-  const body = await res.json();
-  assert.equal(body.ok, true);
-  assert.ok(
-    res.headers.get('x-request-id')?.startsWith('req_'),
-    'X-Request-Id header missing or wrong format'
-  );
+  const res = await fetch(apps.after.base + '/health');
+  assert.equal((await res.json()).ok, true);
+  assert.ok(res.headers.get('x-request-id')?.startsWith('req_'));
 });
 
-test('GET /api/search LHR→SFO returns ≥10 fares in valid ranges', async () => {
-  const res = await fetch(
-    `http://localhost:${appPort}/api/search?origin=LHR&destination=SFO&date=${nextThursday}&user=1&sort=fastest`
-  );
-  assert.equal(res.status, 200);
-  assert.ok(res.headers.get('x-request-id')?.startsWith('req_'), 'X-Request-Id missing');
-
-  const body = await res.json();
-  assert.equal(body.partners_total, 4, 'partners_total should be 4');
-  assert.ok(Array.isArray(body.flights) && body.flights.length >= 10, `only ${body.flights?.length} flights`);
-
-  // Filler fares (>1100 min, >$1200) pad the volume for O(n²) workload.
-  // At least 10 realistic LHR→SFO fares must be within expected ranges.
-  const realistic = body.flights.filter(f =>
-    f.durationMins >= 600 && f.durationMins <= 1100 &&
-    f.priceCents >= 40000 && f.priceCents <= 120000
-  );
-  assert.ok(realistic.length >= 10, `only ${realistic.length} realistic fares in range`);
-
-  const direct = realistic.find(f => f.stops === 0);
-  assert.ok(direct, 'no direct flight among realistic results');
-
-  cachedFareId = body.flights[0].id;
-});
-
-test('GET /api/insights returns 200 with avg_price_cents and X-Request-Id', async () => {
-  const res = await fetch(
-    `http://localhost:${appPort}/api/insights?origin=LHR&destination=SFO&user=1`
-  );
-  assert.equal(res.status, 200, 'insights status should be 200');
-  assert.ok(res.headers.get('x-request-id')?.startsWith('req_'), 'X-Request-Id missing');
-
-  const body = await res.json();
-  assert.ok('avg_price_cents' in body, 'body should have avg_price_cents');
-  assert.ok(Array.isArray(body.recent_searches), 'body should have recent_searches array');
-});
-
-test('POST /api/chat returns 200 with a reply (AFTER build: no degraded fallback)', async () => {
-  const res = await fetch(`http://localhost:${appPort}/api/chat`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ message: 'Is the direct flight available?', user: 1 }),
-  });
-  assert.equal(res.status, 200, 'chat status should be 200');
-  assert.ok(res.headers.get('x-request-id')?.startsWith('req_'), 'X-Request-Id missing');
-
-  const body = await res.json();
-  assert.equal(typeof body.reply, 'string', 'reply should be a string');
-  assert.ok(
-    typeof body.request_id === 'string' && body.request_id.startsWith('req_'),
-    `request_id missing or malformed: ${JSON.stringify(body)}`
-  );
-  assert.ok(!body.degraded, 'AFTER build should not hit the degraded fallback');
-});
-
-test('POST /api/chat on the BEFORE build returns the 200 degraded fallback', async () => {
-  const beforePort = await freePort();
-  const proc = spawn('node', ['src/app.js'], {
-    cwd: ROOT,
-    env: { ...process.env, DATABASE_URL: DB_URL, ENABLE_CHAOS: 'true', PORT: String(beforePort) },
-    stdio: 'pipe',
-  });
-  try {
-    await waitForPort(beforePort);
-    const res = await fetch(`http://localhost:${beforePort}/api/chat`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ message: 'Is the direct flight available?', user: 1 }),
-    });
-    assert.equal(res.status, 200, 'chat should answer 200 even when the history lookup fails');
-    const body = await res.json();
-    assert.equal(body.degraded, true, 'degraded flag missing');
-    assert.match(body.reply, /couldn't load your recent searches/);
-  } finally {
-    proc.kill();
+test('partners never fail: every search gets 4/4 successful partner responses', async () => {
+  for (let i = 0; i < 5; i++) {
+    const b = await (await fetch(apps.after.base + SEARCH(1))).json();
+    assert.equal(b.partners_responded, 4, `search ${i}`);
+    assert.equal(b.partners_total, 4);
   }
 });
 
-test('POST /api/book returns 200 confirmed with request_id', async () => {
-  const flight_id = cachedFareId || `PN401_${nextThursday}`;
-  const res = await fetch(`http://localhost:${appPort}/api/book`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ flight_id, user: 1 }),
-  });
-  assert.ok(res.headers.get('x-request-id')?.startsWith('req_'), 'X-Request-Id missing');
-  assert.equal(res.status, 200, `expected 200, got ${res.status}`);
+test('before (sequential) and after (Promise.allSettled) return the same flights; before is slower', async () => {
+  const before = await (await fetch(apps.before.base + SEARCH(2))).json();
+  const after = await (await fetch(apps.after.base + SEARCH(2))).json();
+  assert.equal(before.partners_responded, 4);
+  assert.equal(after.partners_responded, 4);
+  assert.deepEqual(before.flights, after.flights);
+  assert.ok(before.flights.length >= 10);
+  assert.ok(before.elapsed_ms >= LATENCY * 4 * 0.9, `before ${before.elapsed_ms}ms should be ~4x ${LATENCY}ms`);
+  assert.ok(after.elapsed_ms < before.elapsed_ms, `after ${after.elapsed_ms} < before ${before.elapsed_ms}`);
+  const realistic = after.flights.filter(f => f.durationMins >= 600 && f.durationMins <= 1100 && f.priceCents <= 120000);
+  assert.ok(realistic.length >= 10 && realistic.some(f => f.stops === 0));
+});
 
+test('GET /api/insights returns avg_price_cents and recent_searches', async () => {
+  const res = await fetch(apps.after.base + '/api/insights?origin=LHR&destination=SFO&user=1');
+  assert.equal(res.status, 200);
   const body = await res.json();
-  assert.equal(body.confirmed, true, 'booking should be confirmed');
-  assert.equal(body.flight_id, flight_id, 'flight_id mismatch');
-  assert.ok(
-    typeof body.request_id === 'string' && body.request_id.startsWith('req_'),
-    `request_id missing or malformed: ${JSON.stringify(body)}`
-  );
+  assert.ok('avg_price_cents' in body);
+  assert.ok(Array.isArray(body.recent_searches));
+});
+
+test('chat BEFORE: missing await → 200 degraded, TypeError logged with the request id, model never called', async () => {
+  const seen = fake.requests.length;
+  const res = await post('before', '/api/chat', { message: 'Is the direct flight available?', user: 1 });
+  assert.equal(res.status, 200);
+  const b = await res.json();
+  assert.equal(b.degraded, true);
+  assert.equal(b.error, 'history_unavailable');
+  assert.equal(b.reply.includes(REPLY), false);
+  assert.equal(fake.requests.length, seen, 'no model request was made');
+  await new Promise(r => setTimeout(r, 100));
+  const line = apps.before.proc.output.split('\n').find(l => l.includes(b.request_id) && l.includes('TypeError'));
+  assert.ok(line, 'expected a TypeError log line carrying the response request_id');
+});
+
+test('chat with the await fixed: empty history (new user) works and the model gets that context', async () => {
+  const { rows } = await pool.query(
+    `INSERT INTO users (name, email) VALUES ('Test New', $1) RETURNING id`, [`new-${Date.now()}@test.example`]);
+  const uid = rows[0].id;
+  const seen = fake.requests.length;
+  for (const app of ['after', 'chatFixedOnly']) {
+    const res = await post(app, '/api/chat', { message: 'What is the baggage allowance?', user: uid });
+    assert.equal(res.status, 200, app);
+    const b = await res.json();
+    assert.equal(b.reply, REPLY);
+    assert.ok(!b.degraded);
+    assert.ok(b.request_id.startsWith('req_'));
+  }
+  const sent = fake.requests.slice(seen);
+  assert.equal(sent.length, 2);
+  assert.match(sent[0].body.messages[1].content, /No recent flight searches on record/);
+  assert.equal(sent[0].body.model, 'test-model');
+  await pool.query('DELETE FROM users WHERE id = $1', [uid]);
+});
+
+test('chat with the await fixed: the user\'s real search history is retrieved from PostgreSQL', async () => {
+  await fetch(apps.after.base + SEARCH(4) + '&purpose=conference');
+  const seen = fake.requests.length;
+  const b = await (await post('after', '/api/chat', { message: 'Can I change my booking?', user: 4 })).json();
+  assert.equal(b.reply, REPLY);
+  const prompt = fake.requests[seen].body.messages[1].content;
+  assert.match(prompt, new RegExp(`LHR to SFO on ${nextThursday} \\(conference\\)`));
+  assert.match(prompt, /Can I change my booking\?/);
+});
+
+test('search and chat bugs are independent on the real stack', async () => {
+  // chat fixed, search still sequential
+  const c = await (await post('chatFixedOnly', '/api/chat', { message: 'hi', user: 1 })).json();
+  assert.equal(c.reply, REPLY);
+  const s1 = await (await fetch(apps.chatFixedOnly.base + SEARCH(1))).json();
+  assert.ok(s1.elapsed_ms >= LATENCY * 4 * 0.9, `still sequential: ${s1.elapsed_ms}`);
+  // search fixed, chat still broken
+  const s2 = await (await fetch(apps.searchFixedOnly.base + SEARCH(1))).json();
+  assert.ok(s2.elapsed_ms < LATENCY * 3, `concurrent: ${s2.elapsed_ms}`);
+  const c2 = await (await post('searchFixedOnly', '/api/chat', { message: 'hi', user: 1 })).json();
+  assert.equal(c2.degraded, true);
+});
+
+test('chat: provider failure and an unreachable model are clearly identified errors, never a reply', async () => {
+  const down = await post('providerDown', '/api/chat', { message: 'hi', user: 1 });
+  assert.equal(down.status, 502);
+  const db = await down.json();
+  assert.equal(db.error, 'llm_error');
+  assert.equal(db.reply, undefined);
+  const nk = await post('modelDown', '/api/chat', { message: 'hi', user: 1 });
+  assert.equal(nk.status, 502);
+  const nb = await nk.json();
+  assert.equal(nb.error, 'llm_error');
+  assert.equal(nb.reply, undefined);
+});
+
+test('POST /api/book confirms on the default (buggy-search/chat) build and the fixed build', async () => {
+  for (const app of ['before', 'after']) {
+    const s = await (await fetch(apps[app].base + SEARCH(1))).json();
+    const flight_id = s.flights[0].id;
+    const res = await post(app, '/api/book', { flight_id, user: 1 });
+    assert.ok(res.headers.get('x-request-id')?.startsWith('req_'));
+    assert.equal(res.status, 200, `${app}: booking must not depend on the search/chat bugs`);
+    const body = await res.json();
+    assert.equal(body.confirmed, true);
+    assert.equal(body.flight_id, flight_id);
+    assert.ok(body.request_id.startsWith('req_'));
+  }
+});
+
+test('UI: served page uses a module script and the modules resolve', async () => {
+  const html = await (await fetch(apps.after.base + '/')).text();
+  assert.match(html, /<script type="module" src="\/js\/main\.js"><\/script>/);
+  for (const m of ['main', 'search', 'chat', 'booking', 'util']) {
+    assert.equal((await fetch(`${apps.after.base}/js/${m}.js`)).status, 200);
+  }
 });

@@ -8,8 +8,11 @@ const ORIGINS = ['LHR', 'CDG', 'AMS', 'JFK', 'SFO', 'LAX', 'ORD', 'ATL', 'DFW', 
 const DESTS   = ['SFO', 'JFK', 'LHR', 'LAX', 'NRT', 'CDG', 'AMS', 'ORD', 'BOS', 'DFW'];
 const USERS   = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
 const PURPOSES= ['client_meeting', 'conference', 'internal'];
+// Chat traffic makes real (paid) model calls on a build where CHAOS_CHAT is off.
+// LOAD_CHAT_RATE is whole requests per second (default 1); set 0 to skip chat load entirely.
+const CHAT_RATE   = parseInt(process.env.LOAD_CHAT_RATE ?? '1', 10);
 const MESSAGES= [
-  'Is the 10:40 direct available?',
+  'Is a fare of $1,100 in policy?',
   'What is the baggage allowance?',
   'Can I change my booking?',
   'What is the cancellation policy?',
@@ -67,14 +70,14 @@ const searchRun = autocannon({
   requests: searchPaths.map(path => ({ method: 'GET', path })),
 });
 
-const chatRun = autocannon({
-  url: BASE, connections: 1, duration: DURATION, overallRate: 1,
+const chatRun = CHAT_RATE > 0 ? autocannon({
+  url: BASE, connections: 1, duration: DURATION, overallRate: CHAT_RATE,
   requests: chatBodies.map(body => ({
     method: 'POST', path: '/api/chat',
     headers: { 'Content-Type': 'application/json' },
     body,
   })),
-});
+}) : null;
 
 const bookRun = autocannon({
   url: BASE, connections: 1, duration: DURATION, overallRate: 1,
@@ -106,10 +109,10 @@ function summary(label, r) {
 }
 
 searchRun.on('done',   r => summary('GET /api/search',   r));
-chatRun.on('done',     r => summary('POST /api/chat',     r));
+chatRun?.on('done',    r => summary('POST /api/chat',     r));
 bookRun.on('done',     r => summary('POST /api/book',     r));
 insightsRun.on('done', r => summary('GET /api/insights',  r));
 healthRun.on('done',   r => {
   summary('/health (event-loop proxy)', r);
-  console.log('  (high /health latency = event loop blocked by CHAOS_GAP)\n');
+  console.log('');
 });
