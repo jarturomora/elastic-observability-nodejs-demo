@@ -64,9 +64,8 @@ export function createApp({
 
   app.get('/api/config', (_req, res) => res.json({ showLoadingTimer: config.showLoadingTimer }));
 
-  // Active scenarios, used by verify.js and the compare page labels. Never returns secrets.
-  // CORS-open so the compare page on :3000 can label the :3001 pane.
-  app.get('/api/mode', (_req, res) => res.set('Access-Control-Allow-Origin', '*').json({
+  // Active scenarios, used by verify.js. Never returns secrets.
+  app.get('/api/mode', (_req, res) => res.json({
     mode: config.mode,
     chaos,
     llm: { configured: Boolean(config.llm.apiKey || config.llm.baseURL), model: config.llm.model },

@@ -21,6 +21,6 @@ echo "━━━━━━━━━━━━━━━━━━━━━━━━�
 echo " BEFORE (sequential search + chat missing await): http://localhost:3000"
 echo " AFTER  (all intentional bugs fixed):           http://localhost:3001"
 echo " Side by side:   http://localhost:3000/compare.html"
-echo " Shortcut:       press S or Ctrl/Cmd+Enter to search"
+echo " Shortcuts:      Space = search in both panes, 1 = open left chat, 2 = open right chat"
 echo " Stop:           npm run stop:all"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"

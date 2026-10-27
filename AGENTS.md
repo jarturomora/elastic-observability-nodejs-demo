@@ -1,6 +1,6 @@
 # AGENTS.md
 
-Skyward for Business is a Node.js observability tutorial: a flight-search app plus an LLM-backed chatbot that is **BROKEN ON PURPOSE**. It has exactly two intentional bugs, controlled independently (both on by default):
+Skyward for Business is a Node.js observability tutorial. **Everything is mocked**: the flight "partners" are fictional mock servers (`src/partners.js`) with synthetic fares, bookings are fake, and the Northwind company and policy are made up. Never describe or document them as real airline data or real bookings, and keep the README's "demo app, nothing is real" notice. The project is a flight-search app plus an LLM-backed chatbot that is **BROKEN ON PURPOSE**. It has exactly two intentional bugs, controlled independently (both on by default):
 
 1. **CHAOS_STAIRCASE** — `/api/search` calls the four partners one at a time (`src/partner-client.js`, `sequential: true`; 4 × 1.3 s)
 2. **CHAOS_CHAT** — `/api/chat` does not `await` `pool.query()` (`src/app.js`). `history.rows` is `undefined`, a `TypeError` is thrown **before the model call**, and the user gets HTTP 200 with `degraded: true`. This is a missing-`await` bug, not an empty-result bug.

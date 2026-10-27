@@ -9,21 +9,27 @@ A Node.js flight-search app with an LLM-backed travel chatbot and **two bugs on 
 
 The application source contains no OpenTelemetry code. Elastic gets traces, metrics and logs from one startup flag, `--import @elastic/opentelemetry-node` (EDOT Node.js). That flag also auto-instruments the `openai` client, so the chatbot's model call shows up as a GenAI span with no extra code.
 
-> **This is a learning demo.** The slow and broken code is on purpose. Don't copy it into a real service. The demo user is a random number from 1 to 10 chosen in the browser, with no authentication.
+> ## This is a demo app. Nothing in it is real.
+>
+> - **The flight data is mocked.** There are no real airline, GDS or fare APIs. The four "providers" (PuffinAir, GooseJet, Pelican Air, Penguin Air) are fictional mock servers in [`src/partners.js`](src/partners.js). They return made-up schedules and prices, and only **LHR → SFO** returns realistic flights; other routes return filler fares.
+> - **Bookings are fake.** "Confirm booking" calls a mock endpoint. No ticket is issued, no payment is taken, and nothing is reserved anywhere.
+> - **The company and policy are fictional.** "Northwind Consulting", its travel policy and the cost centre are synthetic text used to ground the chatbot. Don't rely on any answer the chatbot gives.
+> - **Some UI is decoration.** The Hotels and Cars tabs do nothing.
+> - **The slow and broken code is on purpose.** Don't copy it into a real service. The demo user is a random number from 1 to 10 chosen in the browser, with no authentication.
 >
 > **Using an AI coding tool?** Point it at [AGENTS.md](AGENTS.md).
 
 ## Architecture
 
-![Architecture](architecture.svg)
+![Architecture](architecture.png)
 
 | Hop | What happens |
 |---|---|
 | Browser → Node.js backend | The UI calls `/api/search`, `/api/insights`, `/api/chat`, `/api/book` |
-| Backend → four mock providers | `/api/search` fetches fares from PuffinAir, GooseJet, Pelican Air, Penguin Air (1.3 s each) |
-| Backend → PostgreSQL | Recent searches for the chat user are the **retrieved context** (search history only; there is no chat-message history or booking table) |
+| Backend → four mock providers | `/api/search` fetches fares from the fictional PuffinAir, GooseJet, Pelican Air and Penguin Air mock servers (made-up data, 1.3 s each) |
+| Backend → PostgreSQL | Recent searches for the chat user are the **retrieved context** (search history only; chat messages are not stored, and bookings are not written to the database) |
 | Backend → LLM provider | `/api/chat` builds a prompt from the question, the retrieved searches and demo policy facts, then calls an OpenAI-compatible Chat Completions endpoint (a small local Ollama model by default, or OpenAI) |
-| Backend → Elastic | EDOT sends traces, metrics and logs over OTLP |
+| Backend → Elastic | EDOT sends the backend's traces, metrics and logs over OTLP (logs need `ELASTIC_OTEL_NODE_ENABLE_LOG_SENDING=true`, already set in `.env.example`) |
 
 **Three different "AIs":** the *app's LLM* answers travellers in the chat widget. *Elastic's investigation agent* is a feature of Elastic Observability that reads the telemetry to help you diagnose problems. *Claude Code* is the AI coding assistant used to write and debug this app (it follows [AGENTS.md](AGENTS.md)); it is a development tool and is not part of the running system. They are unrelated; this repo only builds the first.
 
@@ -33,7 +39,7 @@ In the diagram, your machine runs the browser and the Node.js backend (`npm star
 
 | What you see | Cause | Where to look in Elastic | Fix |
 |---|---|---|---|
-| Search takes about 5.2 s | `CHAOS_STAIRCASE`: the four partners (1.3 s each) are called one after another | Trace waterfall shows a staircase of four HTTP spans | `CHAOS_STAIRCASE=false` (`Promise.allSettled`, about 1.3 s) |
+| Search takes about 5.3 s | `CHAOS_STAIRCASE`: the four partners (1.3 s each) are called one after another | Trace waterfall shows a staircase of four HTTP spans | `CHAOS_STAIRCASE=false` (`Promise.allSettled`, about 1.3 s) |
 | Chat says "Sorry, I couldn't load your recent searches" | `CHAOS_CHAT`: `/api/chat` calls `pool.query()` without `await`, so `history.rows` is `undefined` and a `TypeError` is thrown before the model is called | Errors/logs show the `TypeError` with the request ID; the trace has a database span and **no model span** | `CHAOS_CHAT=false` (adds the `await`) |
 
 **HTTP 200 does not mean success.** The broken chat returns `200` with `degraded: true` on purpose. Dashboards that only count 5xx would report the endpoint healthy while every chat fails. The browser console is clean; only server-side logs and traces show the error. This is the point of the exercise.
@@ -96,7 +102,7 @@ Shell variables override `.env`, so you can switch scenarios without editing it.
 
 | Scenario | Command | Search | Chat |
 |---|---|---|---|
-| **Before** (default recording) | `npm start` | sequential, ~5.2 s | `TypeError`, 200 degraded |
+| **Before** (default recording) | `npm start` | sequential, ~5.3 s | `TypeError`, 200 degraded |
 | **Search-only fixed** | `CHAOS_STAIRCASE=false npm start` | concurrent, ~1.3 s | still broken |
 | **Chat-only fixed** | `CHAOS_CHAT=false npm start` | still sequential | real model answer |
 | **All fixed** | `ENABLE_CHAOS=false npm start` | concurrent | real model answer |
@@ -110,7 +116,7 @@ npm run start:search-fixed # :3002, service skyward-travel-app-search-fixed
 npm run start:chat-fixed   # :3003, service skyward-travel-app-chat-fixed
 ```
 
-`npm start` alone only starts the :3000 app. The compare page needs the second app on :3001 as well: `npm run dev:compare` starts both, or run `npm start` and `npm run start:fast` in two terminals. The page labels each pane with the bugs that server reports as active (`GET /api/mode`); if a server isn't running, the label says which command starts it and the pane loads by itself once it is up. Under Path B only the before (:3000) and all-fixed (:3001) apps are provided.
+`npm start` alone only starts the :3000 app. The compare page needs the second app on :3001 as well: `npm run dev:compare` starts both, or run `npm start` and `npm run start:fast` in two terminals. The page shows only the two panes (no captions); if a server isn't running yet, its pane loads by itself once it is up. Keyboard shortcuts on the compare page: **Space** runs the search in both panes, **1** opens the left chat window and **2** opens the right one (they only open it; nothing reloads). They are ignored while you are typing in a field. Under Path B only the before (:3000) and all-fixed (:3001) apps are provided.
 
 ## Inspecting the model call in Elastic
 
@@ -121,6 +127,13 @@ npm run start:chat-fixed   # :3003, service skyward-travel-app-chat-fixed
 5. Prompt and response text is **off by default**. Setting `OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT=true` in `.env` emits it as log events (`gen_ai.system.message`, `gen_ai.user.message`, `gen_ai.choice`) correlated to the span. The demo data is synthetic, but the prompt contains the user's search history and question, so enable it only for demos.
 
 Compatibility: `@elastic/opentelemetry-node` 1.19.0 bundles `@opentelemetry/instrumentation-openai` 0.21.0, which supports `openai` `>=4.19.0 <7`. This repo pins `openai` `^6`. Elastic's published docs list an older range (`<6`) and say ESM support is limited, so we tested the combination: with ESM `import OpenAI from 'openai'` on Node 24, the Chat Completions span is produced with the attributes above.
+
+## What telemetry is (and isn't) sent
+
+- **Traces:** one per request the backend receives (the API calls and the static files) with spans for what the backend does inside it: Postgres queries, the four partner calls, the model call. No sampling is configured here, so the OpenTelemetry default applies (keep everything).
+- **Logs:** the app's own log lines, tied to traces by trace ID. EDOT only *sends* them when `ELASTIC_OTEL_NODE_ENABLE_LOG_SENDING=true`.
+- **Metrics:** aggregates, not one per call: Node.js runtime (event loop, memory), process CPU and memory, HTTP durations and the GenAI client metrics.
+- **Not captured:** what happens in the browser. There is no browser instrumentation, so clicks, typing and page rendering are invisible; Elastic only sees the requests the browser then makes to the backend. The partners, Postgres and Ollama are not instrumented either, so you see the backend's side of each call, not what happens inside them.
 
 ## Reliability notes
 
@@ -150,7 +163,7 @@ npm run test:live-llm    # optional: one call to your configured real model (loc
 
 | Command | What it does |
 |---|---|
-| `npm run services` | Docker Compose: Postgres (seeded), partner mocks and the Ollama model; not the app |
+| `npm run services` | Docker Compose: Postgres (seeded), the mock flight providers and the Ollama model; not the app |
 | `npm start` | Start the instrumented app on :3000 |
 | `npm run dev` / `npm run dev:compare` | Services + app / services + before and after side by side |
 | `npm run verify` | Check all endpoints against the active scenarios |

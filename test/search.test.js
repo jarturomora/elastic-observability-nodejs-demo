@@ -6,7 +6,6 @@ import { loadConfig } from '../src/config.js';
 import { callPartner, fetchAllPartners } from '../src/partner-client.js';
 import { startApp, fakePool, fakeLlm, ROOT } from './helpers/harness.js';
 import { requestChat } from '../public/js/chat.js';
-import { describe } from '../public/js/scenario.js';
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
@@ -216,11 +215,27 @@ test('index.html has no inline script and loads the module entry point', async (
 test('static UI modules are served and the app serves index.html', async () => {
   const app = await startApp({ pool: searchPool(), llm: fakeLlm() });
   try {
-    for (const p of ['/', '/js/main.js', '/js/chat.js', '/js/search.js', '/js/booking.js', '/js/util.js', '/compare.html', '/compare.js', '/js/scenario.js']) {
+    for (const p of ['/', '/js/main.js', '/js/chat.js', '/js/search.js', '/js/booking.js', '/js/util.js', '/compare.html', '/compare.js']) {
       assert.equal((await app.get(p)).status, 200, p);
     }
     assert.match((await app.get('/js/main.js')).headers.get('content-type'), /javascript/);
   } finally { await app.close(); }
+});
+
+test('compare page shortcuts: Space searches both panes, 1 / 2 open the left / right chat', async () => {
+  const cmp = await readFile(`${ROOT}public/compare.js`, 'utf8');
+  assert.match(cmp, /Space/);
+  assert.match(cmp, /Digit1:\s*'before'/);
+  assert.match(cmp, /Digit2:\s*'after'/);
+  const chat = await readFile(`${ROOT}public/js/chat.js`, 'utf8');
+  assert.match(chat, /skyward-open-chat/);
+});
+
+test('compare page is just the two panes: no label bar', async () => {
+  const html = await readFile(`${ROOT}public/compare.html`, 'utf8');
+  assert.match(html, /id="before"/);
+  assert.match(html, /id="after"/);
+  assert.ok(!/class="label"|label-before|label-after/.test(html));
 });
 
 test('chat UI has no artificial delay', async () => {
@@ -242,9 +257,4 @@ test('requestChat: ok / degraded / error states, request IDs, never throws', asy
   const net = await requestChat(async () => { throw new Error('offline'); }, 'q', 1);
   assert.equal(net.kind, 'error');
   assert.match(net.text, /Could not reach/);
-});
-
-test('compare labels reflect the active scenarios', () => {
-  assert.equal(describe({ staircase: true, chat: true }), 'bugs on: sequential partner calls · chat missing await');
-  assert.equal(describe({ staircase: false, chat: false }), 'all intentional bugs fixed');
 });

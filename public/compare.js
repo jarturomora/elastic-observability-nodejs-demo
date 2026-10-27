@@ -1,5 +1,3 @@
-import { describe } from './js/scenario.js';
-
 function fire() {
   for (const id of ['before', 'after'])
     document.getElementById(id).contentWindow.postMessage({ type: 'skyward-search' }, '*');
@@ -10,31 +8,32 @@ document.addEventListener('keydown', (e) => {
 // Panes forward Space here when they have focus
 window.addEventListener('message', (e) => { if (e.data && e.data.type === 'skyward-fire') fire(); });
 
-// Label each pane with the scenarios that are actually active on that server.
-// Label each pane with the scenario that server reports. If a server is not running, say how to
-// start it, keep polling, and reload the pane as soon as it comes up.
-const PANES = [
-  ['before', 'http://localhost:3000', 'npm start'],
-  ['after', 'http://localhost:3001', 'npm run start:fast'],
-];
+// 1 opens the left (before) chat window, 2 opens the right (after) one. Only opens; never toggles or reloads.
+const CHAT_KEYS = { Digit1: 'before', Digit2: 'after' };
+function openChat(id) {
+  document.getElementById(id).contentWindow.postMessage({ type: 'skyward-open-chat' }, '*');
+}
+document.addEventListener('keydown', (e) => {
+  const pane = CHAT_KEYS[e.code];
+  if (pane && !e.metaKey && !e.ctrlKey && !e.altKey) { e.preventDefault(); openChat(pane); }
+});
+// Panes forward 1 / 2 here when they have focus
+window.addEventListener('message', (e) => {
+  if (e.data && e.data.type === 'skyward-chat-key' && CHAT_KEYS[e.data.code]) openChat(CHAT_KEYS[e.data.code]);
+});
 
-for (const [id, url, startCmd] of PANES) {
-  const label = document.getElementById(`label-${id}`);
-  const name = id.toUpperCase();
+// If a server isn't up yet (e.g. :3001 before `npm run start:fast`), keep checking and reload that
+// pane as soon as it responds. Nothing is drawn on the page.
+for (const [id, url] of [['before', 'http://localhost:3000'], ['after', 'http://localhost:3001']]) {
   let wasDown = false;
-
-  const setLabel = (text) => { label.innerHTML = `<b>${name}</b>`; label.append(text); };
-
-  async function check() {
+  (async function check() {
     try {
-      const m = await (await fetch(`${url}/api/mode`)).json();
-      setLabel(describe(m.chaos));
-      if (wasDown) { document.getElementById(id).src = `${url}/`; wasDown = false; }
+      await fetch(`${url}/health`, { mode: 'no-cors' }); // resolves if reachable, rejects if not
+      if (wasDown) document.getElementById(id).src = `${url}/`;
+      wasDown = false;
     } catch {
       wasDown = true;
-      setLabel(`not running on ${url.replace('http://', '')}. Start it with: ${startCmd}`);
       setTimeout(check, 3000);
     }
-  }
-  check();
+  })();
 }

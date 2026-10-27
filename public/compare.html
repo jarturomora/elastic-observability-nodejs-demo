@@ -7,17 +7,14 @@
 <style>
   html,body{margin:0;height:100%;background:#111;font-family:system-ui,sans-serif;color:#fff}
   .panes{display:flex;height:100%}
-  .pane{flex:1;width:50%;display:flex;flex-direction:column;min-width:0}
-  .pane + .pane{border-left:3px solid #111}
-  .label{padding:6px 12px;font-size:13px;background:#1c1c1c;border-bottom:1px solid #333;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-  .label b{margin-right:8px}
-  iframe{flex:1;border:0;width:100%;background:#fff}
+  iframe{flex:1;border:0;width:50%;background:#fff}
+  iframe + iframe{border-left:3px solid #111}
 </style>
 </head>
 <body>
 <div class="panes">
-  <div class="pane"><div class="label" id="label-before"><b>BEFORE</b>loading scenario…</div><iframe id="before" src="http://localhost:3000/"></iframe></div>
-  <div class="pane"><div class="label" id="label-after"><b>AFTER</b>loading scenario…</div><iframe id="after"  src="http://localhost:3001/"></iframe></div>
+  <iframe id="before" src="http://localhost:3000/"></iframe>
+  <iframe id="after"  src="http://localhost:3001/"></iframe>
 </div>
 <script type="module" src="/compare.js"></script>
 </body>

@@ -29,7 +29,23 @@ export function initChat() {
   const quick = $('quick-replies');
   const input = $('chat-input');
 
-  bubble.addEventListener('click', () => { panel.hidden = false; bubble.setAttribute('aria-expanded', 'true'); input.focus(); });
+  function openPanel(focusInput = true) { panel.hidden = false; bubble.setAttribute('aria-expanded', 'true'); if (focusInput) input.focus(); }
+  bubble.addEventListener('click', () => openPanel());
+
+  // compare.html: it tells this pane to open the chat window (open only, no reload). Focus is NOT
+  // moved into the text box, so the 1 / 2 keys keep working for the other pane; click the box to type.
+  window.addEventListener('message', (e) => {
+    if (e.data && e.data.type === 'skyward-open-chat') openPanel(false);
+  });
+  // ...and when this pane has focus, it passes the 1 / 2 keys up to compare.html.
+  document.addEventListener('keydown', (e) => {
+    const typing = /^(INPUT|SELECT|TEXTAREA)$/.test(document.activeElement.tagName);
+    if (window.parent !== window && !typing && (e.code === 'Digit1' || e.code === 'Digit2') &&
+        !e.metaKey && !e.ctrlKey && !e.altKey) {
+      e.preventDefault();
+      window.parent.postMessage({ type: 'skyward-chat-key', code: e.code }, '*');
+    }
+  });
   $('chat-close').addEventListener('click', () => { panel.hidden = true; bubble.setAttribute('aria-expanded', 'false'); });
 
   function addMsg(text, role, cls = '') {
