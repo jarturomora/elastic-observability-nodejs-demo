@@ -87,7 +87,7 @@ The `openai` client (pinned `^6`; the bundled `@opentelemetry/instrumentation-op
 
 ## Conventions
 
-- ESM only. No CommonJS `require()` in `src/`. No OpenTelemetry code in `src/`.
+- ESM only. No CommonJS `require()` in `src/`. No OpenTelemetry code in `src/`. The tutorial video uninstalls and re-installs `@elastic/opentelemetry-node` (`npm uninstall`, then `npm install --save`); never delete it from `package.json` permanently, and `npm run start:plain` must keep working without it.
 - Node >= 20.12 (`--env-file`, `--import`).
 - Credentials are server-side env vars only. Never log or return `OPENAI_API_KEY`. A local model via `OPENAI_BASE_URL` needs no key.
 - No embeddings, vector search, LangChain or stored chat history; the retrieved context is the user's recent searches.
