@@ -7,29 +7,25 @@
 
 A Node.js flight-search app with an LLM-backed travel chatbot and **two bugs on purpose**. Use Elastic Observability to find each one, fix it, and watch the app get better.
 
-The application source contains no OpenTelemetry code. Elastic gets traces, metrics and logs from one startup flag, `--import @elastic/opentelemetry-node` (EDOT Node.js). That flag also auto-instruments the `openai` client, so the chatbot's model call shows up as a GenAI span with no extra code.
-
-> ## This is a demo app. Nothing in it is real.
->
-> - **The flight data is mocked.** There are no real airline, GDS or fare APIs. The four "providers" (PuffinAir, GooseJet, Pelican Air, Penguin Air) are fictional mock servers in [`src/partners.js`](src/partners.js). They return made-up schedules and prices, and only **LHR → SFO** returns realistic flights; other routes return filler fares.
-> - **Bookings are fake.** "Confirm booking" calls a mock endpoint. No ticket is issued, no payment is taken, and nothing is reserved anywhere.
-> - **The company and policy are fictional.** "Northwind Consulting", its travel policy and the cost centre are synthetic text used to ground the chatbot. Don't rely on any answer the chatbot gives.
-> - **Some UI is decoration.** The Hotels and Cars tabs do nothing.
-> - **The slow and broken code is on purpose.** Don't copy it into a real service. The demo user is a random number from 1 to 10 chosen in the browser, with no authentication.
->
-> **Using an AI coding tool?** Point it at [AGENTS.md](AGENTS.md).
+The demo application source contains no OpenTelemetry code. Elastic gets traces, metrics and logs from one startup flag, `--import @elastic/opentelemetry-node` (EDOT Node.js). That flag also auto-instruments the `openai` client, so the chatbot's model call shows up as a GenAI span with no extra code.
 
 ## Architecture
 
 ![Architecture](architecture.png)
 
 | Hop | What happens |
-|---|---|
-| Browser → Node.js backend | The UI calls `/api/search`, `/api/insights`, `/api/chat`, `/api/book` |
-| Backend → four mock providers | `/api/search` fetches fares from the fictional PuffinAir, GooseJet, Pelican Air and Penguin Air mock servers (made-up data, 1.3 s each) |
-| Backend → PostgreSQL | Recent searches for the chat user are the **retrieved context** (search history only; chat messages are not stored, and bookings are not written to the database) |
-| Backend → LLM provider | `/api/chat` builds a prompt from the question, the retrieved searches and demo policy facts, then calls an OpenAI-compatible Chat Completions endpoint (a small local Ollama model by default, or OpenAI) |
-| Backend → Elastic | EDOT sends the backend's traces, metrics and logs over OTLP (logs need `ELASTIC_OTEL_NODE_ENABLE_LOG_SENDING=true`, already set in `.env.example`) |
+
+- **The flight data is mocked.** There are no real airline, GDS or fare APIs. The four "providers" (PuffinAir, GooseJet, Pelican Air, Penguin Air) are fictional mock servers in [`src/partners.js`](src/partners.js). They return made-up schedules and prices, and only **LHR → SFO** returns realistic flights; other routes return filler fares.
+ **Bookings are fake.** "Confirm booking" calls a mock endpoint. No ticket is issued, no payment is taken, and nothing is reserved anywhere.
+- **The company and policy are fictional.** "Northwind Consulting", its travel policy and the cost centre are synthetic text used to ground the chatbot. Don't rely on any answer the chatbot gives.
+- **Some UI is decoration.** The Hotels and Cars tabs do nothing.
+- **The slow and broken code is on purpose.** Don't copy it into a real service. The demo user is a random number from 1 to 10 chosen in the browser, with no authentication.
+- **Using an AI coding tool?** Point it at [AGENTS.md](AGENTS.md).
+- Browser → Node.js backend | The UI calls `/api/search`, `/api/insights`, `/api/chat`, `/api/book` |
+- Backend → four mock providers | `/api/search` fetches fares from the fictional PuffinAir, GooseJet, Pelican Air and Penguin Air mock servers (made-up data, 1.3 s each) |
+- Backend → PostgreSQL | Recent searches for the chat user are the **retrieved context** (search history only; chat messages are not stored, and bookings are not written to the database) |
+- Backend → LLM provider | `/api/chat` builds a prompt from the question, the retrieved searches and demo policy facts, then calls an OpenAI-compatible Chat Completions endpoint (a small local Ollama model by default, or OpenAI) |
+- Backend → Elastic | EDOT sends the backend's traces, metrics and logs over OTLP (logs need `ELASTIC_OTEL_NODE_ENABLE_LOG_SENDING=true`, already set in `.env.example`) |
 
 **Three different "AIs":** the *app's LLM* answers travellers in the chat widget. *Elastic's investigation agent* is a feature of Elastic Observability that reads the telemetry to help you diagnose problems. *Claude Code* is the AI coding assistant used to write and debug this app (it follows [AGENTS.md](AGENTS.md)); it is a development tool and is not part of the running system. They are unrelated; this repo only builds the first.
 
