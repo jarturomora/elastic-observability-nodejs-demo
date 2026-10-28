@@ -9,13 +9,6 @@ A Node.js flight-search app with a chatbot. It has **two bugs on purpose**. Use 
 
 The app code has no OpenTelemetry code. One start flag, `--import @elastic/opentelemetry-node` (EDOT Node.js), sends traces, metrics and logs to Elastic.
 
-> **This is a demo. Nothing is real.**
-> - The four airlines (PuffinAir, GooseJet, Pelican Air, Penguin Air) are fake mock servers in [`src/partners.js`](src/partners.js). Fares are made up.
-> - Bookings are fake. No ticket, no payment.
-> - "Northwind Consulting" and its travel policy are made up. Don't trust the chatbot's answers.
-> - The Hotels and Cars tabs do nothing.
-> - Using an AI coding tool? Point it at [AGENTS.md](AGENTS.md).
-
 ## How it works
 
 ![Architecture](architecture.png)
@@ -84,16 +77,10 @@ To compare side by side, run `npm run dev:compare` and open http://localhost:300
 
 ```bash
 npm install --save @elastic/opentelemetry-node
-node --import @elastic/opentelemetry-node src/app.js
+node --env-file=.env --import @elastic/opentelemetry-node src/app.js
 ```
 
-No code changes needed. EDOT reads the `OTEL_*` settings from the environment. The app does not read `.env` itself, so load it first:
-
-```bash
-set -a; source .env; set +a
-```
-
-Or let Node load it: `node --env-file=.env --import @elastic/opentelemetry-node src/app.js` (this is what `npm start` runs). Quote the `OTEL_EXPORTER_OTLP_HEADERS` value in `.env`, because it has a space.
+No code changes needed. EDOT reads the `OTEL_*` settings from `.env`. This is the command `npm start` runs.
 
 To see the app without telemetry, run `npm run start:plain`.
 
@@ -129,6 +116,8 @@ npm run test:live-llm  # optional: one call to your real model
 - Small models make mistakes. Expect an occasional wrong detail.
 - Only the Node.js app is instrumented. The browser, partners, Postgres and Ollama are not.
 - This is a demo, not a production pattern: no login, and the demo user is a random number.
+- Everything is mocked: the airlines, fares, bookings and the Northwind policy are made up, and the Hotels and Cars tabs do nothing.
+- Using an AI coding tool? Point it at [AGENTS.md](AGENTS.md).
 
 ## Learn more
 
